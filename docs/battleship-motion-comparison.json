@@ -1,0 +1,57 @@
+{
+  "original_revision": "572a747d8171137718fad472c5d7473dc7309ffd",
+  "battleship_revision": "aeb8779bad36d76d949745dc3c2e3909be214f41",
+  "battleship_decomp_revision": "df3170da4932ae5702db007625a2145bd9ce026f",
+  "functions": [
+    {
+      "name": "ftPhysicsClampGroundVel",
+      "path": "src/ft/ftphysics.c",
+      "identical_source": true,
+      "original_sha256": "a49fbd113b364851a3b497acc136da4c01198c5a674848b1e3c8250de250a2fb",
+      "battleship_sha256": "a49fbd113b364851a3b497acc136da4c01198c5a674848b1e3c8250de250a2fb"
+    },
+    {
+      "name": "ftPhysicsSetGroundVelFriction",
+      "path": "src/ft/ftphysics.c",
+      "identical_source": true,
+      "original_sha256": "04a6d599c0d1becd0f48a632f8515fdc5381344c690facad0ef1d19e7d9c5c21",
+      "battleship_sha256": "04a6d599c0d1becd0f48a632f8515fdc5381344c690facad0ef1d19e7d9c5c21"
+    },
+    {
+      "name": "ftPhysicsSetGroundVelAbsStickRange",
+      "path": "src/ft/ftphysics.c",
+      "identical_source": true,
+      "original_sha256": "01a05fab947d184e8ac4ebe677b96e84d43f445fe7b16a51395b3aa311322177",
+      "battleship_sha256": "01a05fab947d184e8ac4ebe677b96e84d43f445fe7b16a51395b3aa311322177"
+    },
+    {
+      "name": "ftPhysicsApplyGravityClampTVel",
+      "path": "src/ft/ftphysics.c",
+      "identical_source": true,
+      "original_sha256": "bf2708ef8d777aa21d6cc5d740b43a2c82a5fbed6582174bce9074dced18b9b2",
+      "battleship_sha256": "bf2708ef8d777aa21d6cc5d740b43a2c82a5fbed6582174bce9074dced18b9b2"
+    },
+    {
+      "name": "ftPhysicsClampAirVelXStickRange",
+      "path": "src/ft/ftphysics.c",
+      "identical_source": true,
+      "original_sha256": "ae5824a2dd1465cfa3d6b894259fc9d03a892ac8e700982fa183d0606017cd3d",
+      "battleship_sha256": "ae5824a2dd1465cfa3d6b894259fc9d03a892ac8e700982fa183d0606017cd3d"
+    },
+    {
+      "name": "ftPhysicsApplyAirVelXFriction",
+      "path": "src/ft/ftphysics.c",
+      "identical_source": true,
+      "original_sha256": "efbb377c76129dc1da09735ad38db4a979b6b6c1f0c417e9212f987382c202c5",
+      "battleship_sha256": "efbb377c76129dc1da09735ad38db4a979b6b6c1f0c417e9212f987382c202c5"
+    },
+    {
+      "name": "ftCommonJumpGetJumpForceButton",
+      "path": "src/ft/ftcommon/ftcommonjump.c",
+      "identical_source": true,
+      "original_sha256": "6d00fbec9183b0c5d625068aa227761ab4fe8abfcb617dc5715078657f69b1a2",
+      "battleship_sha256": "6d00fbec9183b0c5d625068aa227761ab4fe8abfcb617dc5715078657f69b1a2"
+    }
+  ],
+  "scope": "Exact function source text in committed trees, not runtime equivalence"
+}

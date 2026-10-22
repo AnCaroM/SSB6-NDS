@@ -1,0 +1,25 @@
+{
+  "sources": [
+    {
+      "name": "ssb-decomp-re",
+      "url": "https://github.com/VetriTheRetri/ssb-decomp-re.git",
+      "path": "upstream/ssb-decomp-re",
+      "revision": "572a747d8171137718fad472c5d7473dc7309ffd",
+      "required": true
+    },
+    {
+      "name": "BattleShip",
+      "url": "https://github.com/JRickey/BattleShip.git",
+      "path": "upstream/BattleShip",
+      "revision": "aeb8779bad36d76d949745dc3c2e3909be214f41",
+      "required": false
+    },
+    {
+      "name": "Torch",
+      "url": "https://github.com/JRickey/Torch.git",
+      "path": "upstream/BattleShip/torch",
+      "revision": "3aa9c9739af95659f19adc73afeb12df93957fc3",
+      "required": true
+    }
+  ]
+}

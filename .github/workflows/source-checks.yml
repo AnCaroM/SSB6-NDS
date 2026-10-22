@@ -1,0 +1,20 @@
+name: Source checks (no ROM)
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - run: python tools/check_publication.py
+      - run: python tools/verify_source.py
+      - run: python -m unittest discover -s tests -p test_mario_assets.py
