@@ -20,6 +20,8 @@ esos recursos y también se excluyen del repositorio y de la CI. Consultar
 - Mario contra CPU y demostración CPU contra CPU; tres vidas y ganador.
 - 50 clips, poses compartidas y formato compacto con reconstrucción entera.
 - Pruebas de lógica en PC, presupuestos DS y herramientas de inspección.
+- Pantalla de inicio y selección de modo (Prueba11, sin probar en DS);
+  ver [docs/menu-prueba11.md](docs/menu-prueba11.md).
 
 Prueba09 recibió confirmación del usuario de que sus animaciones se ven bien.
 Prueba10 necesita validación física propia: no se garantiza 60 Hz ni se ha
