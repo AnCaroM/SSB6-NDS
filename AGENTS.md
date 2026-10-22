@@ -64,3 +64,8 @@
   CPU/GPU profiling must be measured on DS; Timer0 is reserved by this build,
   system timers2/3 remain owned by Calico. Future four-player mode is a study,
   not implemented or performance-proven. See docs/optimizacion-y-escalado.md.
+- Prueba11 adds a title screen, mode select (MODO DE PRUEBA, CPU vs CPU demo,
+  controls) and colored HUD over the unchanged Prueba10 match. Menu flow is
+  SDK-free in src/menu.c and host-tested. No new VRAM banks or textures; the
+  title emblem is 26 untextured polygons. Not yet compiled for DS, emulated or
+  hardware-tested. See docs/menu-prueba11.md.
