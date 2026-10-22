@@ -19,6 +19,12 @@ conservadas. **Esta compilación no se ha probado en emulador ni en DS.**
   - Al terminar: A revancha, B menú.
   - START+SELECT reinicia y SELECT alterna TU/CPU vs CPU, como antes.
 
+Los botones mantenidos al iniciar, pedir revancha o reiniciar se consumen hasta
+soltarlos. Confirmar con A ya no provoca un salto accidental; otra pulsación
+de A funciona normalmente. El resto de botones nuevos siguen disponibles.
+Las descripciones de controles están abreviadas para caber en sus columnas;
+las pruebas verifican los mismos textos que dibuja la consola de 32 columnas.
+
 Al arrancar y al cambiar de pantalla hay un fundido corto desde negro
 (`setBrightness`). El texto usa colores ANSI de la consola de libnds; si algún
 código no se aplica, el texto se ve en el color por defecto.
@@ -38,7 +44,13 @@ código no se aplica, el texto se ve en el color por defecto.
 
 ## Pendiente
 
-Compilar con devkitPro, comprobar en melonDS y después en DS/DSPico:
+Compilado y enlazado con devkitARM r68/libnds 2.0.2/Calico 1.2.0: ARM9 estático
+973.052 bytes, sin contar pico de pila/heap ni ARM7. Las siete suites nativas
+sin ROM pasan, incluidas las regresiones de botones y ancho de texto del menú.
+El máximo estimado del inicio con reserva es 962 polígonos / 2953 vértices;
+no cambia la asignación de texturas. Estos datos no son mediciones de rendimiento.
+
+Falta comprobar en melonDS y después en DS/DSPico:
 legibilidad de colores, posición del emblema, fundido y respuesta táctil.
 Los nombres de modo son provisionales; no hay más modos implementados.
 

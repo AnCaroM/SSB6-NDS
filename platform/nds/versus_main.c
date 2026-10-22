@@ -145,20 +145,13 @@ static void draw_select(const Menu *m)
 
 static void draw_controls(void)
 {
-    static const char *const rows[][2]={
-        {"Cruceta","mover / correr"},{"A","salto y doble salto"},
-        {"X / dir+X","golpes y aereos"},{"Y+X+dir","smash"},
-        {"L, luego X","agarre y lanzamiento"},{"B","bola de fuego"},
-        {"Arriba+B","recuperacion"},{"Abajo+B","tornado"},
-        {"Abajo","bajar / soltar borde"},{"R","camara / mapa"},
-        {"START","pausa"},{"SELECT","TU <-> CPU vs CPU"},
-        {"START+SELECT","reiniciar"}};
     iprintf("\x1b[2J");
     at(1,1,CYAN,"+----------------------------+");
     at(2,1,CYAN,"|");at(2,11,YELLOW,"CONTROLES");at(2,30,CYAN,"|");
     at(3,1,CYAN,"+----------------------------+");
-    for(unsigned i=0;i<sizeof rows/sizeof *rows;++i) {
-        at(5+(int)i,1,YELLOW,rows[i][0]);at(5+(int)i,14,WHITE,rows[i][1]);
+    for(unsigned i=0;i<menu_control_count;++i) {
+        at(5+(int)i,MENU_CONTROL_LABEL_COLUMN,YELLOW,menu_controls[i].button);
+        at(5+(int)i,MENU_CONTROL_ACTION_COLUMN,WHITE,menu_controls[i].action);
     }
     at(19,1,GREEN,"En pausa: B vuelve al menu");
     at(22,1,WHITE,"A, B o toca para volver");
@@ -208,6 +201,7 @@ int main(void)
     static Versus match;versus_init(&match);
     FightCamera camera;camera_reset(&camera);
     Menu menu;menu_init(&menu);
+    MenuInputGate input_gate={0};
     int in_menu=!SCENE_AUTOPLAY,fade=16,prompt=-1,hud_dirty=1;
     unsigned clips[2]={0},ages[2]={0};int paused=0,watch=SCENE_AUTOPLAY,map_view=0;
     unsigned work_us=0,peak_us=0,sim_us=0,over_budget=0,period_us=0;
@@ -217,7 +211,8 @@ int main(void)
     while(pmMainLoop()) {
         u16 start=timerTick(0);
         period_us=(unsigned)((u64)(u16)(start-previous)*1000000/(BUS_CLOCK/64));previous=start;
-        scanKeys();unsigned held=keysHeld(),down=keysDown();
+        scanKeys();unsigned physical_held=keysHeld(),held=physical_held,down=keysDown();
+        menu_input_filter(&input_gate,&held,&down);
         /* Short fade from black on boot and on every screen change. */
         setBrightness(3,-fade);if(fade)--fade;
         if(in_menu) {
@@ -229,6 +224,7 @@ int main(void)
             if(action!=MENU_STAY) {
                 in_menu=0;watch=action==MENU_PLAY_DEMO;fade=16;hud_dirty=1;
                 versus_init(&match);camera_reset(&camera);
+                menu_input_arm(&input_gate,physical_held);
                 paused=map_view=0;peak_us=over_budget=0;ages[0]=ages[1]=clips[0]=clips[1]=0;
             } else if(menu.dirty) {
                 menu.dirty=0;
@@ -257,10 +253,20 @@ int main(void)
         int to_menu=(paused || match.winner>=0) && (down&KEY_B);
         if(to_menu) {in_menu=1;menu_init(&menu);menu.screen=MENU_SELECT;menu.cursor=watch?MENU_OPTION_DEMO:MENU_OPTION_TEST;fade=16;
             versus_init(&match);swiWaitForVBlank();continue;}
-        if(reset || (match.winner>=0 && (down&KEY_A))) {versus_init(&match);camera_reset(&camera);paused=0;peak_us=over_budget=0;ages[0]=ages[1]=0;hud_dirty=1;}
+        if(reset || (match.winner>=0 && (down&KEY_A))) {
+            versus_init(&match);camera_reset(&camera);paused=0;peak_us=over_budget=0;
+            ages[0]=ages[1]=0;hud_dirty=1;
+            menu_input_arm(&input_gate,physical_held);held=physical_held;
+            menu_input_filter(&input_gate,&held,&down);
+        }
         else {
             if(down&KEY_START)paused=!paused;
-            if(down&KEY_SELECT) {watch=!watch;versus_init(&match);camera_reset(&camera);ages[0]=ages[1]=0;hud_dirty=1;}
+            if(down&KEY_SELECT) {
+                watch=!watch;versus_init(&match);camera_reset(&camera);
+                ages[0]=ages[1]=0;hud_dirty=1;
+                menu_input_arm(&input_gate,physical_held);held=physical_held;
+                menu_input_filter(&input_gate,&held,&down);
+            }
         }
         if(down&KEY_R)map_view=!map_view;
         CombatInput input[2]={0};
