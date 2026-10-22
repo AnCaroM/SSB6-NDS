@@ -72,7 +72,7 @@ def main():
                 sources.append('src/recovery_demo.c')
             if args.demo=='versus':
                 sources[sources.index('platform/nds/combat_main.c')]='platform/nds/versus_main.c'
-                sources.append('src/versus.c')
+                sources+=['src/versus.c','src/menu.c']
             if args.demo in ('dreamland','versus'):
                 subprocess.run([sys.executable,str(ROOT/'tools/extract_dreamland.py')],check=True)
                 subprocess.run([sys.executable,str(ROOT/'tools/convert_dreamland.py')],check=True)
@@ -97,7 +97,7 @@ def main():
                       'scene': 'SSB Mario;Integration;Original model and clips',
                       'combat': 'SSB NDS;Prueba 02;Mario - combate de prueba',
                       'dreamland': 'SSB NDS;Prueba 09;Mario - animaciones revisadas',
-                      'versus': 'SSB NDS;Prueba 10;Mario vs CPU',
+                      'versus': 'SSB NDS;Prueba 11;Menu y modo de prueba',
                       'motion': 'SSB Motion;Research scene;Provisional movement'}[args.demo])], env=env, check=True)
     size_output = subprocess.check_output([str(size), str(elf)], text=True)
     (build / (stem + '-build-info.json')).write_text(json.dumps({
