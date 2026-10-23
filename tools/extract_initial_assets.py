@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import struct
+import shutil
 import subprocess
 from prepare_rom import EXPECTED_SHA1
 
@@ -36,7 +37,8 @@ def main():
     decoder = build / ('vpk_decode' + suffix)
     env = dict(os.environ, ZIG_GLOBAL_CACHE_DIR=str(ROOT / '.cache/zig'),
                ZIG_LOCAL_CACHE_DIR=str(ROOT / '.cache/zig-local'))
-    subprocess.run([str(zig), 'cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
+    compiler = [str(zig), 'cc'] if zig.is_file() else [shutil.which('cc') or shutil.which('clang') or shutil.which('gcc') or 'cc']
+    subprocess.run([*compiler, '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
                     '-I' + str(TORCH / 'lib/libvpk0'), str(ROOT / 'tools/vpk_decode.c'),
                     str(TORCH / 'lib/libvpk0/vpk0.c'), '-o', str(decoder)], env=env, check=True)
     descriptions = (UPSTREAM / 'tools/relocFileDescriptions.us.txt').read_text()
