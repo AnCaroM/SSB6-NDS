@@ -38,11 +38,13 @@ def main():
               'limits':['Static ELF is not peak main RAM','Stage reserve must be revised if stage geometry changes',
                         'Submitted geometry differs from clipped geometry','Runtime GPU/CPU time needs hardware measurement']}
     if report['arm9_static_bytes']>report['arm9_static_budget']: raise ValueError('ARM9 static RAM budget exceeded')
-    if args.demo=='versus':
+    if args.demo=='versus' and info.get('audio_enabled',True):
         audio=json.loads((ROOT/'build/audio/audio-info.json').read_text())
         report['shared_audio_pcm_bytes']=audio['bytes']
         report['audio_channels']=audio['channel_limit']
         if audio['bytes']>65536:raise ValueError('Provisional audio bank exceeded 64 KiB')
+    elif args.demo=='versus':
+        report['shared_audio_pcm_bytes']=0;report['audio_channels']=0
     if report['shared_texture_bytes']>report['texture_capacity_bytes']: raise ValueError('Texture banks exceeded')
     if report['polygons_with_stage_reserve']>1400 or report['vertices_with_stage_reserve']>4000:
         raise ValueError('Geometry submission budget exceeded')

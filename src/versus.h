@@ -3,7 +3,7 @@
 #include "combat.h"
 typedef enum { SOUND_SWING,SOUND_HIT,SOUND_HEAVY,SOUND_FIRE,SOUND_JUMP,SOUND_LAND,SOUND_KO,SOUND_COUNT } FightSound;
 typedef struct { unsigned sound,fighter; } FightSoundEvent;
-typedef struct {unsigned pose,age;float decay_x,decay_y;} DamageReaction;
+typedef struct {unsigned pose,age,active;float decay_x,decay_y;} DamageReaction;
 typedef struct {
     CombatScene fighter[2];
     unsigned percent[2],stun[2],stocks[2],invulnerable[2];
@@ -19,4 +19,6 @@ void versus_init(Versus *v);
 void versus_step(Versus *v,const CombatInput input[2]);
 CombatInput versus_cpu(const Versus *v,unsigned who);
 int versus_captured(const Versus *v,unsigned who);
+/* -1 ordinary animation, 0..16 damage, 17 DamageFall continuation. */
+int versus_damage_pose(const Versus *v,unsigned who);
 #endif

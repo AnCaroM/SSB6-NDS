@@ -6,8 +6,10 @@
 #include "mario_mesh.h"
 #include "mario_render.h"
 #include "stage_render.h"
-#include "fight_audio.h"
 #include "recovery_demo.h"
+#ifdef ANIMATION_REVIEW
+#include "animation_review.h"
+#endif
 #ifdef ORIGINAL_DREAMLAND
 #include "dreamland_render.h"
 #include "camera.h"
@@ -46,7 +48,7 @@ static unsigned clip_for(const MotionScene *s)
     return s->state == SCENE_LAND ? 4 : 0;
 }
 
-static void actor(const MotionScene *s, int facing, unsigned clip, unsigned age, unsigned tint)
+static void actor(const MotionScene *s,int facing,unsigned clip,unsigned age,unsigned tint,const MarioPoseBlend *blend)
 {
     glPushMatrix();
     float x=s->x,y=s->y;
@@ -59,7 +61,7 @@ static void actor(const MotionScene *s, int facing, unsigned clip, unsigned age,
     glRotateYi(facing > 0 ? 8192 : -8192);
     int size = floattof32(MARIO_RESTORE_SCALE/WORLD_UNIT);
     glScalef32(size,size,size);
-    mario_render_draw_pose_tint(clip,age,tint);
+    mario_render_draw_pose_mix(clip,age,tint,blend);
     glPopMatrix(1);
 }
 
@@ -118,7 +120,7 @@ static void draw_title(int prompt)
         at(6,10,RED,"N   D   S");
         at(10,2,WHITE,"Port experimental de SSB64");
         at(11,2,WHITE,"para Nintendo DS / DS Lite");
-        at(21,1,GREEN,"Prueba 12 - mapa: Dream Land");
+        at(21,1,GREEN,"Prueba 13 - mapa: Dream Land");
         at(22,1,GREEN,"No es el juego completo");
         prompt=1;
     }
@@ -197,7 +199,6 @@ int main(void)
         iprintf("Error al cargar recursos\n");while(pmMainLoop())swiWaitForVBlank();return 1;
     }
     emblem_init();
-    fight_audio_init();
     glEnable(GL_ANTIALIAS);glEnable(GL_BLEND);glClearColor(14,24,30,31);glClearPolyID(63);
     glClearDepth(0x7fff);glViewport(0,0,255,191);
     static Versus match;versus_init(&match);
@@ -206,13 +207,17 @@ int main(void)
     MenuInputGate input_gate={0};
     int in_menu=!SCENE_AUTOPLAY,fade=16,prompt=-1,hud_dirty=1;
     unsigned clips[2]={0},ages[2]={0};int paused=0,watch=SCENE_AUTOPLAY,map_view=0;
+    unsigned rendered_age[2]={0},blend_left[2]={0};
+    int damage_pose[2]={-1,-1};MarioPoseBlend blends[2]={{0}};
+#ifdef ANIMATION_REVIEW
+    unsigned review_clock=0;
+#endif
     unsigned work_us=0,peak_us=0,sim_us=0,over_budget=0,period_us=0;
     /* Calico reserves timers2/3. Timer0 is a free-running profiling counter;
      * 16-bit wrap is safe for intervals below ~125 ms at bus clock /64. */
     timerStart(0,ClockDivider_64,0,NULL);u16 previous=timerTick(0);
     while(pmMainLoop()) {
         u16 start=timerTick(0);
-        fight_audio_tick();
         period_us=(unsigned)((u64)(u16)(start-previous)*1000000/(BUS_CLOCK/64));previous=start;
         scanKeys();unsigned physical_held=keysHeld(),held=physical_held,down=keysDown();
         menu_input_filter(&input_gate,&held,&down);
@@ -247,26 +252,24 @@ int main(void)
             glTranslatef32(floattof32(-cx/WORLD_UNIT),floattof32(-cy/WORLD_UNIT),floattof32(-6));
             dreamland_render_draw();
             for(unsigned i=0;i<2;++i)
-                actor(&match.fighter[i].player,match.fighter[i].player.facing,0,menu.ticks,i?RGB15(12,24,31):RGB15(31,31,31));
+                actor(&match.fighter[i].player,match.fighter[i].player.facing,0,menu.ticks,i?RGB15(12,24,31):RGB15(31,31,31),NULL);
             glFlush(0);
             swiWaitForVBlank();
             continue;
         }
         int reset=(held&KEY_START) && (held&KEY_SELECT) && (down&(KEY_START|KEY_SELECT));
         int to_menu=(paused || match.winner>=0) && (down&KEY_B);
-        if(to_menu) {fight_audio_stop();in_menu=1;menu_init(&menu);menu.screen=MENU_SELECT;menu.cursor=watch?MENU_OPTION_DEMO:MENU_OPTION_TEST;fade=16;
+        if(to_menu) {in_menu=1;menu_init(&menu);menu.screen=MENU_SELECT;menu.cursor=watch?MENU_OPTION_DEMO:MENU_OPTION_TEST;fade=16;
             versus_init(&match);swiWaitForVBlank();continue;}
         if(reset || (match.winner>=0 && (down&KEY_A))) {
-            fight_audio_stop();
             versus_init(&match);camera_reset(&camera);paused=0;peak_us=over_budget=0;
             ages[0]=ages[1]=0;hud_dirty=1;
             menu_input_arm(&input_gate,physical_held);held=physical_held;
             menu_input_filter(&input_gate,&held,&down);
         }
         else {
-            if(down&KEY_START) {paused=!paused;if(paused)fight_audio_stop();}
+            if(down&KEY_START)paused=!paused;
             if(down&KEY_SELECT) {
-                fight_audio_stop();
                 watch=!watch;versus_init(&match);camera_reset(&camera);
                 ages[0]=ages[1]=0;hud_dirty=1;
                 menu_input_arm(&input_gate,physical_held);held=physical_held;
@@ -283,18 +286,31 @@ int main(void)
         input[0].drop=!!(down&KEY_DOWN) && !input[0].attack && !input[0].special;
         u16 sim_start=timerTick(0);
         if(!paused) {
+#ifdef ANIMATION_REVIEW
+            int advances=animation_review_step(&match,review_clock++);
+#else
             if(watch)input[0]=versus_cpu(&match,0);
             input[1]=versus_cpu(&match,1);
             int advances=!match.freeze && match.winner<0;
             versus_step(&match,input);
-            fight_audio_events(&match);
+#endif
             if(advances)for(unsigned i=0;i<2;++i) {
                 CombatScene *s=&match.fighter[i];unsigned next=clip_for(&s->player);
                 if(s->attack_frame>=0)next=combat_player_clip(s);
                 else if(s->dash_ticks)next=s->run_age<mario_clips[mario_dash_clip].ticks?mario_dash_clip:mario_run_clip;
                 else if(s->brake_ticks)next=mario_brake_clip;
                 if(versus_captured(&match,i))next=mario_capture_clip;
-                if(match.stun[i])next=mario_damage_clips[match.reaction[i].pose];
+                int pose=versus_damage_pose(&match,i);
+                if(pose>=0)next=pose==17?mario_damage_fall_clip:mario_damage_clips[pose];
+                if(blend_left[i])--blend_left[i];
+                if(damage_pose[i]>=0 && (pose<0 || pose==17) && next!=clips[i] &&
+                   s->attack_frame<0 && !versus_captured(&match,i)) {
+                    blends[i]=(MarioPoseBlend){clips[i],rendered_age[i],0};blend_left[i]=2;
+                }
+                if(pose>=0 && pose!=17 && pose!=damage_pose[i])blend_left[i]=0;
+                if(s->attack_frame>=0)blend_left[i]=0;
+                blends[i].weight=256-blend_left[i]*256/3;
+                damage_pose[i]=pose;
                 ages[i]=next==clips[i]?ages[i]+1:0;clips[i]=next;
             }
         }
@@ -317,12 +333,14 @@ int main(void)
             CombatScene *s=&match.fighter[i];unsigned tint=i?RGB15(12,24,31):RGB15(31,31,31);
             if(match.stun[i] && match.freeze)tint=RGB15(31,12,12);
             unsigned age=s->attack_frame>=0?(unsigned)s->attack_frame:ages[i];
-            if(match.stun[i]) {
+            if(damage_pose[i]>=0) {
                 age=match.reaction[i].age;
+                if(damage_pose[i]==17)age-=mario_damage_ticks[match.reaction[i].pose];
                 if(age>=mario_clips[clips[i]].ticks)age=mario_clips[clips[i]].ticks-1;
             }
+            rendered_age[i]=age;
             if(!match.invulnerable[i] || (match.tick&4))
-                actor(&s->player,s->player.facing,clips[i],age,tint);
+                actor(&s->player,s->player.facing,clips[i],age,tint,blend_left[i]?&blends[i]:NULL);
             for(unsigned j=0;j<4;++j)if(s->fireballs[j].life)
                 mario_render_fireball(s->fireballs[j].x,s->fireballs[j].y,WORLD_UNIT,140-s->fireballs[j].life);
         }
@@ -334,6 +352,10 @@ int main(void)
             iprintf(" Pico:%uus >16.7ms:%u       \n",peak_us,over_budget);
             iprintf(" Periodo:%uus              \n",period_us);
         }
+#ifdef ANIMATION_REVIEW
+        iprintf("\x1b[21;1HRevision %-8s t:%3u       ",mario_moves[match.fighter[0].move].name,match.tick);
+        iprintf("\x1b[22;1HReaccion:%2d edad:%3u      ",versus_damage_pose(&match,1),match.reaction[1].age);
+#endif
         work_us=(unsigned)((u64)(u16)(timerTick(0)-start)*1000000/(BUS_CLOCK/64));
         if(work_us>peak_us)peak_us=work_us;
         if(work_us>16667)++over_budget;
