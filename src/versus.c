@@ -5,6 +5,8 @@
 
 static int grounded(const MotionScene *p)
 {return p->state==SCENE_WAIT || p->state==SCENE_WALK;}
+static void sound_event(Versus *v,FightSound sound,unsigned fighter)
+{if(v->sound_count<8)v->sounds[v->sound_count++]=(FightSoundEvent){sound,fighter};}
 static void fighter_reset(Versus *v,unsigned i,int respawn)
 {
     CombatScene *s=&v->fighter[i];combat_init_stage(s,STAGE_DREAMLAND);
@@ -14,7 +16,8 @@ static void fighter_reset(Versus *v,unsigned i,int respawn)
         s->player.y=1800;s->player.state=SCENE_AIR;s->player.platform=-1;
         s->player.jumps_used=1;v->invulnerable[i]=90;
     }
-    v->percent[i]=v->stun[i]=0;v->launch[i]=0;
+    v->percent[i]=v->stun[i]=0;v->launch[i]=v->launch_y[i]=0;
+    v->reaction[i]=(DamageReaction){0};
 }
 void versus_init(Versus *v)
 {
@@ -23,6 +26,13 @@ void versus_init(Versus *v)
 }
 int versus_captured(const Versus *v,unsigned i)
 {return v->fighter[1-i].captured;}
+int versus_damage_pose(const Versus *v,unsigned i)
+{
+    const DamageReaction *r=&v->reaction[i];
+    if(!r->active)return -1;
+    if(v->stun[i] || r->age<mario_damage_ticks[r->pose])return (int)r->pose;
+    return v->fighter[i].player.state==SCENE_AIR && r->pose>=12?17:-1;
+}
 static void target_snapshot(Versus *v,unsigned i)
 {
     CombatScene *s=&v->fighter[i];unsigned j=1-i;
@@ -32,6 +42,7 @@ static void target_snapshot(Versus *v,unsigned i)
 }
 void versus_step(Versus *v,const CombatInput input[2])
 {
+    v->sound_count=0;
     if(v->winner>=0)return;
     ++v->tick;
     if(v->freeze) {--v->freeze;return;}
@@ -49,11 +60,41 @@ void versus_step(Versus *v,const CombatInput input[2])
         CombatInput in=input[i];
         if(v->stun[i]) {
             --v->stun[i];in=(CombatInput){0};s->attack_frame=-1;
-            s->player.vx=v->launch[i];
-            if(grounded(&s->player) && s->player.vx!=0)s->player.vx+=s->player.vx>0?6:-6;
-            v->launch[i]=motion_ground_friction(v->launch[i],.8f);
+            s->player.cliff_cooldown=2;
         }
+        s->player.hit_vx=v->launch[i];s->player.hit_vy=v->launch_y[i];
+        unsigned lands=s->player.landings,jumps=s->player.air_jumps;
+        SceneState old_state=s->player.state;
+        int old_attack=s->attack_frame;
         combat_update(s,in);
+        if(v->reaction[i].active) {
+            ++v->reaction[i].age;
+            if(!v->stun[i] && (s->attack_frame>=0 || s->player.air_jumps!=jumps ||
+               s->player.state==SCENE_KNEE || in.motion.stick_x))v->reaction[i].active=0;
+        }
+        /* Decay the external vector independently of ordinary gravity/drift.
+         * Source air decay 1.7; ground damage friction = traction6 * .25.
+         * Flat default surface material; no per-frame sqrt. */
+        if(grounded(&s->player) || s->player.state==SCENE_LAND) {
+            v->launch[i]=motion_ground_friction(s->player.hit_vx,1.5f);
+            v->launch_y[i]=0;
+        } else {
+            float x=s->player.hit_vx,y=s->player.hit_vy;
+            float dx=v->reaction[i].decay_x,dy=v->reaction[i].decay_y;
+            v->launch[i]=(x>0 && x<=dx)||(x<0 && x>=dx)?0:x-dx;
+            v->launch_y[i]=(y>0 && y<=dy)||(y<0 && y>=dy)?0:y-dy;
+            if(x==0)v->launch[i]=0;
+            if(y==0)v->launch_y[i]=0;
+        }
+        if(s->player.landings!=lands) {
+            sound_event(v,SOUND_LAND,i);
+            /* Actual landing animation replaces airborne damage. */
+            v->reaction[i].active=0;
+            if(v->stun[i])v->stun[i]=6;
+        }
+        if((old_state==SCENE_KNEE && s->player.state==SCENE_AIR) || s->player.air_jumps!=jumps)
+            sound_event(v,SOUND_JUMP,i);
+        if(old_attack<0 && s->attack_frame>=0)sound_event(v,SOUND_SWING,i);
     }
     int respawned=0;
     for(unsigned i=0;i<2;++i) {
@@ -61,6 +102,7 @@ void versus_step(Versus *v,const CombatInput input[2])
         /* Local horizontal/top blast limits supplement the scene bottom. */
         if(p->respawns!=before_respawn[i] || p->x>6000 || p->x< -6000 || p->y>6000) {
             --v->stocks[i];fighter_reset(v,i,1);v->fighter[1-i].captured=0;respawned=1;
+            sound_event(v,SOUND_KO,i);
         }
     }
     if(!v->stocks[0] || !v->stocks[1]) {
@@ -77,18 +119,35 @@ void versus_step(Versus *v,const CombatInput input[2])
     /* Both contact passes see post-physics snapshots, before either damage
      * result is committed. This permits trades without player-order bias. */
     for(unsigned i=0;i<2;++i)target_snapshot(v,i);
-    for(unsigned i=0;i<2;++i)combat_resolve(&v->fighter[i]);
+    for(unsigned i=0;i<2;++i) {
+        int spawned=v->fighter[i].spawned;
+        combat_resolve(&v->fighter[i]);
+        if(!spawned && v->fighter[i].spawned)sound_event(v,SOUND_FIRE,i);
+    }
     if(v->fighter[0].captured && v->fighter[1].captured)
         v->fighter[(v->tick&1)?0:1].captured=0;
     for(unsigned i=0;i<2;++i) {
         CombatScene *s=&v->fighter[i];unsigned j=1-i;
         if(s->hits!=before_hits[i]) {
             v->percent[j]=s->percent;v->stun[j]=s->hitstun;v->launch[j]=s->damage_vx;
+            v->launch_y[j]=s->damage_vy;
+            /* Tick0 of these clips is a neutral setup pose. Show the first
+             * authored recoil pose at contact, including during hitstop. */
+            v->reaction[j]=(DamageReaction){s->damage_pose,1,1,
+                1.7f*s->damage_vx/s->damage_kb,1.7f*s->damage_vy/s->damage_kb};
             v->fighter[j].player=s->target;
             v->fighter[j].attack_frame=-1;v->fighter[j].dash_ticks=0;
             v->fighter[j].captured=0;
+            v->fighter[j].brake_ticks=0;
+            sound_event(v,s->damage_amount>=10?SOUND_HEAVY:SOUND_HIT,j);
             if(s->hitstop>v->freeze)v->freeze=s->hitstop;
-        } else if(s->captured)v->fighter[j].player=s->target;
+        } else if(s->captured) {
+            v->fighter[j].player=s->target;
+            v->fighter[j].attack_frame=-1;
+            v->stun[j]=0;v->launch[j]=v->launch_y[j]=0;
+            v->reaction[j].active=0;
+            v->fighter[j].player.hit_vx=v->fighter[j].player.hit_vy=0;
+        }
     }
 }
 CombatInput versus_cpu(const Versus *v,unsigned who)

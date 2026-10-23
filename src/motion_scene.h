@@ -14,6 +14,8 @@ typedef struct {
     SceneState state;
     unsigned state_ticks;
     float x, y, vx, vy;
+    /* Separate external impulse: ordinary gravity must not clamp knockback. */
+    float hit_vx,hit_vy;
     int jump_was_held, short_hop;
     unsigned landings, respawns;
     StageId stage;

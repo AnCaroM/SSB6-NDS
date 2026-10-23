@@ -65,6 +65,7 @@ class MoveTests(unittest.TestCase):
         moves=json.loads(path.read_text());clips=json.loads((ROOT/'build/model/animation-info.json').read_text())
         self.assertEqual([m['move'] for m in moves],[s[0] for s in SPECS])
         for m in moves:self.assertEqual(clips[m['clip']]['id'],m['resource'])
-        self.assertLess(sum(c['frames']*c['pose_vertices']*6 for c in clips),1500000)
+        # Full-rate attacks and damage retain authored rotations at each tick.
+        self.assertLess(sum(c['compact_pose_bytes'] for c in clips),1500*1024)
 
 if __name__=='__main__':unittest.main()
