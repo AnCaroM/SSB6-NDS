@@ -187,11 +187,12 @@ void scene_step(MotionScene *s, SceneInput input)
     }
 
     float previous_y = s->y, previous_x = s->x;
-    s->x += s->vx;
-    s->y += s->vy;
+    float total_vx=s->vx+s->hit_vx,total_vy=s->vy+s->hit_vy;
+    s->x += total_vx;
+    s->y += total_vy;
     int aerial=s->state==SCENE_AIR || s->state==SCENE_SPECIAL_HI || s->state==SCENE_SPECIAL_FALL;
     if(s->stage==STAGE_DREAMLAND && aerial && !s->cliff_cooldown &&
-       s->vy<0 && previous_y+360>=0 && s->y+360<=0) {
+       total_vy<0 && previous_y+360>=0 && s->y+360<=0) {
         float t=(previous_y+360)/(previous_y-s->y);
         float crossing=previous_x+(s->x-previous_x)*t;
         int side=crossing<0?-1:1;
@@ -205,7 +206,10 @@ void scene_step(MotionScene *s, SceneInput input)
         }
     }
     int special_landing=s->state==SCENE_SPECIAL_HI && s->state_ticks>6 && s->vy<0;
-    stage_resolve_solid(s->stage,previous_x,previous_y,&s->x,&s->y,&s->vx,&s->vy);
+    float incoming_x=total_vx,incoming_y=total_vy;
+    stage_resolve_solid(s->stage,previous_x,previous_y,&s->x,&s->y,&total_vx,&total_vy);
+    if(total_vx!=incoming_x) {s->vx=total_vx;s->hit_vx=0;}
+    if(total_vy!=incoming_y) {s->vy=total_vy;s->hit_vy=0;}
     unsigned count;
     const StagePlatform *platforms = stage_platforms(s->stage, &count);
     int landing = -1, supported = 0;
@@ -213,7 +217,7 @@ void scene_step(MotionScene *s, SceneInput input)
         const StagePlatform *p = &platforms[i];
         int within = s->x >= p->left && s->x <= p->right;
         if (within && s->y == p->height) supported = 1;
-        if (!aerial || (s->state==SCENE_SPECIAL_HI && !special_landing) || s->vy > 0 || (int)i == s->ignored_platform) continue;
+        if (!aerial || (s->state==SCENE_SPECIAL_HI && !special_landing) || total_vy > 0 || (int)i == s->ignored_platform) continue;
         if (!within || previous_y < p->height || s->y > p->height) continue;
         float fraction = previous_y == s->y ? 0 : (previous_y-p->height)/(previous_y-s->y);
         float crossing_x = previous_x + (s->x-previous_x)*fraction;
@@ -225,6 +229,7 @@ void scene_step(MotionScene *s, SceneInput input)
         s->platform = landing;
         s->y = platforms[landing].height;
         s->vy = 0.0f;
+        s->hit_vy=0;
         s->jumps_used=0;s->air_jump=0;
         s->special_used=0;
         ++s->landings;

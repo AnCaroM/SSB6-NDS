@@ -71,3 +71,20 @@
   hardware-tested. Consume transition-held buttons until release to prevent
   confirmation/retry A from jumping. Shared controls text is checked against
   the 32-column console layout. See docs/menu-prueba11.md.
+- Prueba12 adds ROM-derived damage reactions (resources523..539; FlyRoll
+  converted but reserved), source hitlag/angle thresholds and independent damage
+  impulse in 1v1. Preserve normal gravity, source air decay1.7 and flat ground
+  traction*.25. Landing recovery6 is provisional; full tumble/tech/DI are absent.
+  Seven own synthesized PCM8 effects share a 27360-byte bank, max4 hardware
+  channels. They are not original game sounds or voices. Host mock tests cover
+  priority and channel reuse; audio/feel/performance still need physical DS.
+  Preserve camera/menu behavior and all old packages. See docs/impactos-prueba12.md.
+- User disliked Prueba12 sound/impact animation. Prueba13 removes synthesized
+  audio from the versus binary. Sample all SPECS attacks and damage523..540 at
+  every original tick: vertex interpolation across two ticks loses fast joint
+  rotations. Keep compact decode error<=2.1 and shared bank<=1500KiB. Damage
+  starts at authored recoil tick1, can finish after stun without extending input
+  lock, continues strong air launches with DamageFall540, exits via a short
+  recovery blend. Separate --animation-review ROM scripts six attacks mirrored
+  at one-third speed for melonDS inspection; never package it as the playable
+  release. See docs/animaciones-prueba13.md for validation and limits.

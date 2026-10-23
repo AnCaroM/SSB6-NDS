@@ -12,6 +12,8 @@ typedef struct {
     unsigned tick, percent, hits, knockouts, hitstop, hitstun;
     int facing, attack_frame, attack_was_held, attack_connected;
     float damage_vx;
+    float damage_vy,damage_kb;
+    unsigned damage_pose,damage_amount;
     MarioMove move;
     int attack_facing,special_was_held,grab_was_held,queued_combo,captured;
     unsigned capture_age,dash_ticks,tap_age,run_age,brake_ticks;

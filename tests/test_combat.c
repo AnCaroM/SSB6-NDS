@@ -12,9 +12,9 @@ int main(void)
     combat_step(&s,(SceneInput){0,0},1,0);
     assert(s.percent == 0); /* Startup cannot hit. */
     combat_step(&s,(SceneInput){0,0},1,0);
-    assert(s.percent == 2 && s.hits == 1 && s.hitstop == 4);
+    assert(s.percent == 2 && s.hits == 1 && s.hitstop == 5);
     float x = s.target.x;
-    for (int i=0;i<4;++i) combat_step(&s,(SceneInput){0,0},1,0);
+    for (int i=0;i<5;++i) combat_step(&s,(SceneInput){0,0},1,0);
     assert(s.target.x == x && s.attack_frame == 2); /* Frozen during hitstop. */
     for (int i=0;i<50;++i) combat_step(&s,(SceneInput){0,0},1,0);
     assert(s.hits == 1 && s.percent == 2 && s.target.x > x); /* No multihit or held auto-repeat. */

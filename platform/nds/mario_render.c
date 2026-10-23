@@ -91,13 +91,28 @@ void mario_render_draw_pose(unsigned clip, unsigned frame)
 }
 
 void mario_render_draw_pose_tint(unsigned clip, unsigned frame, unsigned tint)
+{mario_render_draw_pose_mix(clip,frame,tint,NULL);}
+
+static int16_t coordinate(const MarioClip *animation,PoseSample p,unsigned i)
+{
+    const MarioPose *a=animation->positions+p.a*mario_pose_vertex_count*3;
+    const MarioPose *b=animation->positions+p.b*mario_pose_vertex_count*3;
+#ifdef MARIO_COMPACT_POSES
+    return pose_blend(pose_decode(a[i],animation->low[i%3],animation->span[i%3]),
+                      pose_decode(b[i],animation->low[i%3],animation->span[i%3]),p);
+#else
+    return pose_blend(a[i],b[i],p);
+#endif
+}
+
+void mario_render_draw_pose_mix(unsigned clip,unsigned frame,unsigned tint,const MarioPoseBlend *from)
 {
     if (clip >= mario_clip_count) { draw(NULL,tint); return; }
     const MarioClip *animation = &mario_clips[clip];
     PoseSample p=pose_sample(frame,animation->ticks,animation->frame_step,animation->frames,animation->loop);
     const MarioPose *a=animation->positions+p.a*mario_pose_vertex_count*3;
 #ifndef MARIO_COMPACT_POSES
-    if(!p.part || p.b==p.a) {draw(a,tint);return;}
+    if(!from && (!p.part || p.b==p.a)) {draw(a,tint);return;}
 #endif
     const MarioPose *b=animation->positions+p.b*mario_pose_vertex_count*3;
     for(unsigned i=0;i<mario_pose_vertex_count*3;++i)
@@ -107,5 +122,12 @@ void mario_render_draw_pose_tint(unsigned clip, unsigned frame, unsigned tint)
 #else
         blended[i]=pose_blend(a[i],b[i],p);
 #endif
+    if(from && from->clip<mario_clip_count && from->weight<256) {
+        const MarioClip *old=&mario_clips[from->clip];
+        PoseSample sample=pose_sample(from->tick,old->ticks,old->frame_step,old->frames,old->loop);
+        PoseSample mix={0,0,from->weight,256};
+        for(unsigned i=0;i<mario_pose_vertex_count*3;++i)
+            blended[i]=pose_blend(coordinate(old,sample,i),blended[i],mix);
+    }
     draw(blended,tint);
 }

@@ -4,7 +4,7 @@
 #include <stdio.h>
 int main(void)
 {
-    assert(sizeof(MarioPose)==1 && mario_pose_vertex_count==189 && mario_clip_count==50);
+    assert(sizeof(MarioPose)==1 && mario_pose_vertex_count==189 && mario_clip_count==68);
     FILE *out=fopen("build/scene/poses-decoded.bin","wb");assert(out);
     for(unsigned clip=0;clip<mario_clip_count;++clip) {
         const MarioClip *c=&mario_clips[clip];

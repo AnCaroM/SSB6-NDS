@@ -18,7 +18,9 @@ esos recursos y también se excluyen del repositorio y de la CI. Consultar
 - Repertorio de ataques, salto aéreo, bordes y recuperación.
 - Cámara automática adaptada a 256 × 192.
 - Mario contra CPU y demostración CPU contra CPU; tres vidas y ganador.
-- 50 clips, poses compartidas y formato compacto con reconstrucción entera.
+- 68 clips compartidos; ataques y daño conservan cada cuadro original.
+- Reacciones de daño completas, caída tras lanzamiento y transición de salida;
+  sonido provisional retirado en [Prueba13](docs/animaciones-prueba13.md).
 - Pruebas de lógica en PC, presupuestos DS y herramientas de inspección.
 - Pantalla de inicio y selección de modo (Prueba11, sin probar en DS);
   ver [docs/menu-prueba11.md](docs/menu-prueba11.md).

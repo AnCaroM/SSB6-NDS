@@ -21,4 +21,5 @@ extern const MoveHit mario_move_hits[];
 extern const MoveFrame mario_move_frames[];
 extern const MoveDesc mario_moves[MOVE_COUNT];
 extern const uint8_t mario_move_demo_order[MOVE_COUNT];
+extern const unsigned mario_damage_ticks[17];
 #endif

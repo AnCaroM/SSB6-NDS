@@ -11,9 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('--version',choices=['01','02','03','04','05','06','07','08','09','10','11'],default='11')
+    parser.add_argument('--version',choices=['01','02','03','04','05','06','07','08','09','10','11','12','13'],default='13')
     args=parser.parse_args()
-    stem='ssb-scene' if args.version=='01' else 'ssb-combat' if args.version=='02' else 'ssb-versus' if args.version in ('10','11') else 'ssb-dreamland'
+    stem='ssb-scene' if args.version=='01' else 'ssb-combat' if args.version=='02' else 'ssb-versus' if args.version in ('10','11','12','13') else 'ssb-dreamland'
     release='SSB-NDS-Prueba'+args.version
     source = ROOT / f'build/nds/{stem}.nds'
     info = json.loads((ROOT / f'build/nds/{stem}-build-info.json').read_text())
@@ -27,7 +27,7 @@ def main():
     output.mkdir(exist_ok=True,parents=True)
     rom = output / (release+'.nds')
     shutil.copyfile(source, rom)
-    doc={'01':'prueba-ds-dspico.md','02':'combate-prueba02.md','03':'dreamland-prueba03.md','04':'camara-prueba04.md','05':'bordes-prueba05.md','06':'recuperacion-prueba06.md','07':'especial-prueba07.md','08':'ataques-prueba08.md','09':'animaciones-prueba09.md','10':'versus-prueba10.md','11':'menu-prueba11.md'}[args.version]
+    doc={'01':'prueba-ds-dspico.md','02':'combate-prueba02.md','03':'dreamland-prueba03.md','04':'camara-prueba04.md','05':'bordes-prueba05.md','06':'recuperacion-prueba06.md','07':'especial-prueba07.md','08':'ataques-prueba08.md','09':'animaciones-prueba09.md','10':'versus-prueba10.md','11':'menu-prueba11.md','12':'impactos-prueba12.md','13':'animaciones-prueba13.md'}[args.version]
     instructions = (ROOT / 'docs' / doc).read_text(encoding='utf-8')
     (output / 'LEEME.txt').write_text(instructions, encoding='utf-8')
     (output / 'SHA256SUMS.txt').write_text(info['nds_sha256'] + '  ' + rom.name + '\n')

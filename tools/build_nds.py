@@ -21,6 +21,7 @@ def main():
     parser.add_argument('--demo', choices=['motion', 'mario', 'scene', 'combat', 'dreamland','versus'], default='motion')
     parser.add_argument('--autoplay', action='store_true', help='Start the integrated scene with scripted input')
     parser.add_argument('--compact-poses',action='store_true',help='Use bounded-error 8-bit pose bank with integer decode')
+    parser.add_argument('--animation-review',action='store_true',help='Separate slow scripted attack/reaction diagnostic ROM')
     args = parser.parse_args()
     if not args.devkitpro:
         parser.error('Set DEVKITPRO or pass --devkitpro C:/devkitPro. SDK is not installed by this script.')
@@ -53,6 +54,10 @@ def main():
              '-I' + str(sdk / 'libnds/include'), '-I' + str(calico / 'include')]
     sources = ['src/motion.c', 'src/stage.c', 'src/motion_scene.c', 'src/special_hi.c', 'platform/nds/main.c']
     stem = 'ssb-' + args.demo
+    if args.animation_review:
+        if args.demo!='versus':parser.error('--animation-review requires --demo versus')
+        flags+=['-DANIMATION_REVIEW=1','-DSCENE_AUTOPLAY=1']
+        stem+='-review'
     if args.compact_poses:flags.append('-DMARIO_COMPACT_POSES=1')
     if args.autoplay:
         if args.demo not in ('scene','combat','dreamland','versus'): parser.error('--autoplay requires an integrated scene')
@@ -73,6 +78,7 @@ def main():
             if args.demo=='versus':
                 sources[sources.index('platform/nds/combat_main.c')]='platform/nds/versus_main.c'
                 sources+=['src/versus.c','src/menu.c']
+                if args.animation_review:sources.append('src/animation_review.c')
             if args.demo in ('dreamland','versus'):
                 subprocess.run([sys.executable,str(ROOT/'tools/extract_dreamland.py')],check=True)
                 subprocess.run([sys.executable,str(ROOT/'tools/convert_dreamland.py')],check=True)
@@ -97,14 +103,18 @@ def main():
                       'scene': 'SSB Mario;Integration;Original model and clips',
                       'combat': 'SSB NDS;Prueba 02;Mario - combate de prueba',
                       'dreamland': 'SSB NDS;Prueba 09;Mario - animaciones revisadas',
-                      'versus': 'SSB NDS;Prueba 11;Menu y modo de prueba',
+                      'versus': 'SSB NDS;Prueba 13;Animaciones de combate',
                       'motion': 'SSB Motion;Research scene;Provisional movement'}[args.demo])], env=env, check=True)
     size_output = subprocess.check_output([str(size), str(elf)], text=True)
+    inputs=sources + [p.relative_to(ROOT).as_posix() for folder in
+        ['src','platform/nds','build/model','build/dreamland','build/audio']
+        for p in (ROOT/folder).glob('*.h')]
     (build / (stem + '-build-info.json')).write_text(json.dumps({
         'compiler': subprocess.check_output([str(gcc), '--version'], text=True).splitlines()[0],
-        'sources': {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in sources},
+        'sources': {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in inputs},
         'nds_sha256': hashlib.sha256(nds.read_bytes()).hexdigest(), 'size': size_output,
         'demo': args.demo, 'autoplay': args.autoplay,'compact_poses':args.compact_poses,
+        'audio_enabled':False,'animation_review':args.animation_review,
         'runtime_tested': False}, indent=2))
     print(size_output)
     print(nds)
