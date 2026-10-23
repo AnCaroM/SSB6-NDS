@@ -22,15 +22,15 @@ static void event(Versus *v,unsigned sound)
 int main(void)
 {
     Versus v={0};fight_audio_init();assert(flushes==SOUND_COUNT);
-    for(int i=0;i<12;++i)event(&v,SOUND_SWING);
+    for(int i=0;i<12;++i)event(&v,SOUND_SWING_S);
     assert(live()==4 && plays==12);fight_audio_stop();assert(!live());
-    for(int i=0;i<4;++i)event(&v,SOUND_KO);
-    int before=plays;event(&v,SOUND_SWING);assert(plays==before && live()==4);
+    for(int i=0;i<4;++i)event(&v,SOUND_VOICE_DEAD);
+    int before=plays;event(&v,SOUND_SWING_S);assert(plays==before && live()==4);
     fight_audio_stop();
     event(&v,SOUND_LAND);
     for(int t=0;t<7;++t)fight_audio_tick();
     active[last_id]=0; /* Sample ended in hardware before its slot estimate. */
-    event(&v,SOUND_KO);int ko=last_id;
+    event(&v,SOUND_VOICE_DEAD);int ko=last_id;
     for(int t=0;t<3;++t)fight_audio_tick();
     assert(active[ko] && live()==1); /* Old slot must not kill reused channel. */
     for(int t=0;t<45;++t)fight_audio_tick();assert(!live());
