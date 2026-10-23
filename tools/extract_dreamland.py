@@ -1,6 +1,7 @@
 """Extract Dream Land's exact US resources and resolve relocation provenance."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
 import subprocess
@@ -24,7 +25,7 @@ def main():
         path=out/f'{fid:04d}_{name}.bin'
         if flags>>31:
             compressed=path.with_suffix('.vpk0');compressed.write_bytes(raw)
-            subprocess.run([str(ROOT/'build/assets-tools/vpk_decode.exe'),str(compressed),str(path)],check=True)
+            subprocess.run([str(ROOT/'build/assets-tools'/('vpk_decode.exe' if os.name=='nt' else 'vpk_decode')),str(compressed),str(path)],check=True)
         else:path.write_bytes(raw[:decoded*4])
         data=path.read_bytes()
         if len(data)!=decoded*4:raise ValueError('Invalid decoded length')

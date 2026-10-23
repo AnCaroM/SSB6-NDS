@@ -1,13 +1,15 @@
 """Offline US moveset timeline; rendering and combat share original bones.
 
 No C execution: a bounded interpreter handles the numeric attack/event subset.
-Effects/audio/invulnerability are catalogued as unimplemented, not emulated.
+Sound events and hit sounds map to the shared 1v1 list in fight_sounds.py;
+effects/invulnerability are catalogued as unimplemented, not emulated.
 """
 import re
 import math
 import json
 from pathlib import Path
 import numpy as np
+from fight_sounds import BY_FGM,NONE,SMASH_RANDOM,hit_sound
 
 # Stable order shared with src/moves.h. Clip IDs are resolved by resource ID.
 SPECS=[
@@ -43,6 +45,14 @@ def scripts(root):
     return {name:re.findall(r'(ft\w+)\(([^()]*)\)',body)
             for name,body in re.findall(r'ftMotionCommand\s+(\w+)\[\]\s*=\s*\{(.*?)\n\};',source,re.S)}
 
+SOUND_OPS=('ftMotionPlayFGM','ftMotionPlayVoice','ftMotionPlayInterruptableVoice',
+           'ftMotionCommandPlayFGMStoreInfo','ftMotionCommandPlaySmashVoice')
+
+def sound_id(op,name):
+    # PlaySmashVoice's argument is a placeholder; runtime picks attr smash_sfx.
+    if op=='ftMotionCommandPlaySmashVoice':return SMASH_RANDOM
+    return BY_FGM.get(name,NONE)
+
 def timeline(table,name):
     events=[];clock=0;budget=0
     def run(name,depth=0):
@@ -68,6 +78,7 @@ def timeline(table,name):
                         'ftMotionCommandRefreshAttackCollID','ftMotionCommandSetAttackCollDamage',
                         'ftMotionCommandSetAttackCollSize') or re.fullmatch('ftMotionCommandSetFlag[0-3]',op):
                 events.append((clock,op,[int(a,0) for a in args]))
+            elif op in SOUND_OPS:events.append((clock,'sound',[sound_id(op,args[0]),args[0]]))
         else:
             # Adjacent command arrays can intentionally fall through, notably
             # FireballGround into the shared spawn script at 0x1688.
@@ -87,8 +98,10 @@ def frames(table,name,ticks):
         else:epoch+=1;strike=epoch
         active[aid]={'v':list(values),'strike':strike};cache[aid]=list(values)
     for t in range(ticks):
+        sounds=[]
         while cursor<len(events) and events[cursor][0]<=t:
             _,op,args=events[cursor];cursor+=1
+            if op=='sound' and args[0]!=NONE:sounds.append(args[0])
             if op.startswith('ftMotionCommandMakeAttackColl'):enable(args[0],args)
             elif op=='ftMotionCommandClearAttackCollAll':active.clear()
             elif op=='ftMotionCommandClearAttackColl':active.pop(args[0],None)
@@ -103,7 +116,9 @@ def frames(table,name,ticks):
                 if args[0] in cache:cache[args[0]][6]=args[1]
             elif 'SetFlag' in op:
                 bit=1<<int(op[-1]);flags=(flags|bit) if args[0] else (flags&~bit)
-        output.append({'hits':[dict(v=list(h['v']),strike=h['strike']) for h in active.values()], 'flags':flags})
+        if len(sounds)>2:raise ValueError('More than two sounds in one tick')
+        output.append({'hits':[dict(v=list(h['v']),strike=h['strike']) for h in active.values()], 'flags':flags,
+                       'sounds':sounds+[NONE]*(2-len(sounds))})
     if epoch>63:raise ValueError('Hit record mask exceeded')
     return output
 
@@ -124,10 +139,11 @@ def export(root,output,clips,bones):
                 # is diameter (ftMain), not radius. Project to the fight plane.
                 x,y=round(p[2]),round(p[1]);radius=round(v[6]*.5)
                 angle=v[10];a=math.radians(angle if angle!=361 else 0)
-                hits.append([x,y,radius,v[3],angle,v[11],v[12],v[17],hit['strike'],v[13],round(math.cos(a)*4096),round(math.sin(a)*4096)])
+                hits.append([x,y,radius,v[3],angle,v[11],v[12],v[17],hit['strike'],v[13],round(math.cos(a)*4096),round(math.sin(a)*4096),
+                             hit_sound(v[16],v[15])])
             spawn=world[12]@np.array([0,0,0,1.0])
             anchor=world[24]@np.array([0,0,0,1.0])
-            allframes.append([start,len(hits)-start,frame['flags'],round(spawn[2]),round(spawn[1]),round(anchor[2]),round(anchor[1])])
+            allframes.append([start,len(hits)-start,frame['flags'],round(spawn[2]),round(spawn[1]),round(anchor[2]),round(anchor[1]),'{%d,%d}'%tuple(frame['sounds'])])
         descs.append([clip,info['ticks'],first]);report.append({'move':key,'resource':fid,'clip':clip,'ticks':info['ticks'],
                     'events':timeline(table,script),'hit_samples':sum(len(f['hits']) for f in sequence)})
     lines=['/* Generated from user ROM poses and pinned US source timelines. */','#include "moves.h"',
