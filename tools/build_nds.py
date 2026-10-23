@@ -71,8 +71,10 @@ def main():
                 sources.append('build/model/mario_moves.c')
                 sources.append('src/recovery_demo.c')
             if args.demo=='versus':
+                subprocess.run([sys.executable,str(ROOT/'tools/generate_fight_audio.py')],check=True)
+                flags.append('-I'+str(ROOT/'build/audio'))
                 sources[sources.index('platform/nds/combat_main.c')]='platform/nds/versus_main.c'
-                sources+=['src/versus.c','src/menu.c']
+                sources+=['src/versus.c','src/menu.c','platform/nds/fight_audio.c','build/audio/fight_samples.c']
             if args.demo in ('dreamland','versus'):
                 subprocess.run([sys.executable,str(ROOT/'tools/extract_dreamland.py')],check=True)
                 subprocess.run([sys.executable,str(ROOT/'tools/convert_dreamland.py')],check=True)
@@ -97,12 +99,15 @@ def main():
                       'scene': 'SSB Mario;Integration;Original model and clips',
                       'combat': 'SSB NDS;Prueba 02;Mario - combate de prueba',
                       'dreamland': 'SSB NDS;Prueba 09;Mario - animaciones revisadas',
-                      'versus': 'SSB NDS;Prueba 11;Menu y modo de prueba',
+                      'versus': 'SSB NDS;Prueba 12;Impactos y sonidos',
                       'motion': 'SSB Motion;Research scene;Provisional movement'}[args.demo])], env=env, check=True)
     size_output = subprocess.check_output([str(size), str(elf)], text=True)
+    inputs=sources + [p.relative_to(ROOT).as_posix() for folder in
+        ['src','platform/nds','build/model','build/dreamland','build/audio']
+        for p in (ROOT/folder).glob('*.h')]
     (build / (stem + '-build-info.json')).write_text(json.dumps({
         'compiler': subprocess.check_output([str(gcc), '--version'], text=True).splitlines()[0],
-        'sources': {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in sources},
+        'sources': {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in inputs},
         'nds_sha256': hashlib.sha256(nds.read_bytes()).hexdigest(), 'size': size_output,
         'demo': args.demo, 'autoplay': args.autoplay,'compact_poses':args.compact_poses,
         'runtime_tested': False}, indent=2))

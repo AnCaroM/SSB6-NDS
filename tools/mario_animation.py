@@ -240,6 +240,8 @@ def export_clips(root, model, center, scale, output):
         lo=','.join(map(str,clip['compact_low']));sp=','.join(map(str,clip['compact_span']))
         lines.append(f'{{pose_{i},{clip["frames"]},{int(clip["loop"])},{clip["frame_step"]},{clip["ticks"]},{{{lo}}},{{{sp}}}}},')
     lines += ['};', f'const unsigned mario_clip_count = {len(clips)};']
+    lines.append('const unsigned mario_damage_clips[17] = {' + ','.join(
+        str(next(i for i,c in enumerate(clips) if c['id']==fid)) for fid in range(523,540)) + '};')
     for name,fid in [('dash',504),('run',505),('brake',506),('capture',565)]:
         lines.append(f'const unsigned mario_{name}_clip={next(i for i,c in enumerate(clips) if c["id"]==fid)};')
     (output / 'mario_clips.c').write_text('\n'.join(lines)+'\n')

@@ -334,6 +334,7 @@ extern const uint16_t mario_pose_vertex_map[];
 extern const unsigned mario_pose_vertex_count;
 extern const uint16_t mario_fireball_pixels[256];
 extern const unsigned mario_dash_clip,mario_run_clip,mario_brake_clip,mario_capture_clip;
+extern const unsigned mario_damage_clips[17];
 '''
     (output / 'mario_mesh.h').write_text(header)
     with (output / 'mario_mesh.h').open('a') as f:

@@ -15,6 +15,13 @@ CLIPS = {499: 'Wait', 501: 'Walk2', 509: 'JumpF', 513: 'Fall', 518: 'LandingAirX
 for _,fid,name in SPECS:
     if fid not in CLIPS:CLIPS[fid]=name or 'CatchPull'
 CLIPS.update({504:'Dash',505:'Run',506:'RunBrake',565:'CapturePulled'})
+# Order follows dFTMarioMotionDescs / nFTCommonMotionDamage*, not file labels.
+DAMAGE_IDS = list(range(523,540))
+for fid,name in zip(DAMAGE_IDS, ['DamageHi1','DamageHi2','DamageHi3',
+    'DamageN1','DamageN2','DamageN3','DamageLw1','DamageLw2','DamageLw3',
+    'DamageAir1','DamageAir2','DamageAir3','DamageFlyHi','DamageFlyN',
+    'DamageFlyLw','DamageFlyTop','DamageFlyRoll']):
+    CLIPS[fid]=name
 
 
 def main():

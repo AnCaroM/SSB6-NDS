@@ -30,7 +30,7 @@ class FigatreeTests(unittest.TestCase):
             self.assertLessEqual(error,2.1,c['name'])
             self.assertAlmostEqual(error,c['compact_max_axis_error_world'])
             total+=source.size+12
-        self.assertLess(total,630000)
+        self.assertLess(total,800*1024)  # 67 shared clips, including damage.
 
     def test_native_compact_decode_matches_offline_quantization(self):
         import numpy as np
@@ -53,7 +53,7 @@ class FigatreeTests(unittest.TestCase):
         source=(ROOT/'upstream/ssb-decomp-re/src/ft/ftdata.c').read_text().split('FTMotionDesc dFTMarioMotionDescs[] =')[1].split('};')[0]
         flags=dict(re.findall(r'\{ &llFTMarioAnim(\w+)FileID, [^,]+, ([^}]+)\}',source))
         clips=json.loads(path.read_text())
-        self.assertEqual(len(clips),50)
+        self.assertEqual(len(clips),67)
         for c in clips:
             original=flags.get(names[c['id']],'')
             expected='TransN' if 'XROTN_JOINT' in original else 'XRotN' if 'TRANSN_JOINT' in original else None
