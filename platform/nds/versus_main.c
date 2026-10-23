@@ -7,6 +7,7 @@
 #include "mario_render.h"
 #include "stage_render.h"
 #include "recovery_demo.h"
+#include "fight_audio.h"
 #ifdef ANIMATION_REVIEW
 #include "animation_review.h"
 #endif
@@ -120,7 +121,7 @@ static void draw_title(int prompt)
         at(6,10,RED,"N   D   S");
         at(10,2,WHITE,"Port experimental de SSB64");
         at(11,2,WHITE,"para Nintendo DS / DS Lite");
-        at(21,1,GREEN,"Prueba 13 - mapa: Dream Land");
+        at(21,1,GREEN,"Prueba 14 - mapa: Dream Land");
         at(22,1,GREEN,"No es el juego completo");
         prompt=1;
     }
@@ -198,7 +199,7 @@ int main(void)
     if(!mario_render_init() || !dreamland_render_init()) {
         iprintf("Error al cargar recursos\n");while(pmMainLoop())swiWaitForVBlank();return 1;
     }
-    emblem_init();
+    emblem_init();fight_audio_init();
     glEnable(GL_ANTIALIAS);glEnable(GL_BLEND);glClearColor(14,24,30,31);glClearPolyID(63);
     glClearDepth(0x7fff);glViewport(0,0,255,191);
     static Versus match;versus_init(&match);
@@ -221,6 +222,7 @@ int main(void)
         period_us=(unsigned)((u64)(u16)(start-previous)*1000000/(BUS_CLOCK/64));previous=start;
         scanKeys();unsigned physical_held=keysHeld(),held=physical_held,down=keysDown();
         menu_input_filter(&input_gate,&held,&down);
+        fight_audio_tick();
         /* Short fade from black on boot and on every screen change. */
         setBrightness(3,-fade);if(fade)--fade;
         if(in_menu) {
@@ -259,18 +261,18 @@ int main(void)
         }
         int reset=(held&KEY_START) && (held&KEY_SELECT) && (down&(KEY_START|KEY_SELECT));
         int to_menu=(paused || match.winner>=0) && (down&KEY_B);
-        if(to_menu) {in_menu=1;menu_init(&menu);menu.screen=MENU_SELECT;menu.cursor=watch?MENU_OPTION_DEMO:MENU_OPTION_TEST;fade=16;
+        if(to_menu) {fight_audio_stop();in_menu=1;menu_init(&menu);menu.screen=MENU_SELECT;menu.cursor=watch?MENU_OPTION_DEMO:MENU_OPTION_TEST;fade=16;
             versus_init(&match);swiWaitForVBlank();continue;}
         if(reset || (match.winner>=0 && (down&KEY_A))) {
-            versus_init(&match);camera_reset(&camera);paused=0;peak_us=over_budget=0;
+            fight_audio_stop();versus_init(&match);camera_reset(&camera);paused=0;peak_us=over_budget=0;
             ages[0]=ages[1]=0;hud_dirty=1;
             menu_input_arm(&input_gate,physical_held);held=physical_held;
             menu_input_filter(&input_gate,&held,&down);
         }
         else {
-            if(down&KEY_START)paused=!paused;
+            if(down&KEY_START) {paused=!paused;if(paused)fight_audio_stop();}
             if(down&KEY_SELECT) {
-                watch=!watch;versus_init(&match);camera_reset(&camera);
+                fight_audio_stop();watch=!watch;versus_init(&match);camera_reset(&camera);
                 ages[0]=ages[1]=0;hud_dirty=1;
                 menu_input_arm(&input_gate,physical_held);held=physical_held;
                 menu_input_filter(&input_gate,&held,&down);
@@ -294,6 +296,7 @@ int main(void)
             int advances=!match.freeze && match.winner<0;
             versus_step(&match,input);
 #endif
+            fight_audio_events(&match);
             if(advances)for(unsigned i=0;i<2;++i) {
                 CombatScene *s=&match.fighter[i];unsigned next=clip_for(&s->player);
                 if(s->attack_frame>=0)next=combat_player_clip(s);

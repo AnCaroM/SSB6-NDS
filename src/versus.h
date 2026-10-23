@@ -1,7 +1,6 @@
 #ifndef SSB_VERSUS_H
 #define SSB_VERSUS_H
 #include "combat.h"
-typedef enum { SOUND_SWING,SOUND_HIT,SOUND_HEAVY,SOUND_FIRE,SOUND_JUMP,SOUND_LAND,SOUND_KO,SOUND_COUNT } FightSound;
 typedef struct { unsigned sound,fighter; } FightSoundEvent;
 typedef struct {unsigned pose,age,active;float decay_x,decay_y;} DamageReaction;
 typedef struct {
@@ -11,7 +10,7 @@ typedef struct {
     float launch_y[2];
     DamageReaction reaction[2];
     FightSoundEvent sounds[8];
-    unsigned sound_count;
+    unsigned sound_count,smash_voice;
     unsigned tick,freeze,cpu_decisions;
     int winner; /* -1 playing, 0/1 winner, 2 draw */
 } Versus;

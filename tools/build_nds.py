@@ -77,7 +77,9 @@ def main():
                 sources.append('src/recovery_demo.c')
             if args.demo=='versus':
                 sources[sources.index('platform/nds/combat_main.c')]='platform/nds/versus_main.c'
-                sources+=['src/versus.c','src/menu.c']
+                subprocess.run([sys.executable,str(ROOT/'tools/extract_fight_audio.py')],check=True)
+                flags.append('-I'+str(ROOT/'build/audio'))
+                sources+=['src/versus.c','src/menu.c','platform/nds/fight_audio.c','build/audio/fight_samples.c']
                 if args.animation_review:sources.append('src/animation_review.c')
             if args.demo in ('dreamland','versus'):
                 subprocess.run([sys.executable,str(ROOT/'tools/extract_dreamland.py')],check=True)
@@ -103,7 +105,7 @@ def main():
                       'scene': 'SSB Mario;Integration;Original model and clips',
                       'combat': 'SSB NDS;Prueba 02;Mario - combate de prueba',
                       'dreamland': 'SSB NDS;Prueba 09;Mario - animaciones revisadas',
-                      'versus': 'SSB NDS;Prueba 13;Animaciones de combate',
+                      'versus': 'SSB NDS;Prueba 14;Sonidos originales',
                       'motion': 'SSB Motion;Research scene;Provisional movement'}[args.demo])], env=env, check=True)
     size_output = subprocess.check_output([str(size), str(elf)], text=True)
     inputs=sources + [p.relative_to(ROOT).as_posix() for folder in
@@ -114,7 +116,7 @@ def main():
         'sources': {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in inputs},
         'nds_sha256': hashlib.sha256(nds.read_bytes()).hexdigest(), 'size': size_output,
         'demo': args.demo, 'autoplay': args.autoplay,'compact_poses':args.compact_poses,
-        'audio_enabled':False,'animation_review':args.animation_review,
+        'audio_enabled':args.demo=='versus','animation_review':args.animation_review,
         'runtime_tested': False}, indent=2))
     print(size_output)
     print(nds)
