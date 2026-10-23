@@ -22,6 +22,7 @@ for fid,name in zip(DAMAGE_IDS, ['DamageHi1','DamageHi2','DamageHi3',
     'DamageAir1','DamageAir2','DamageAir3','DamageFlyHi','DamageFlyN',
     'DamageFlyLw','DamageFlyTop','DamageFlyRoll']):
     CLIPS[fid]=name
+CLIPS[540]='DamageFall'
 
 
 def main():

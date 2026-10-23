@@ -100,6 +100,8 @@ def evaluate(segments, time):
 
 
 def export_clips(root, model, center, scale, output):
+    from mario_moves import SPECS
+    attack_ids={fid for _,fid,_ in SPECS}
     manifest = json.loads((root / 'build/assets/us/motion-extraction-info.json').read_text())
     if manifest['rom_sha1'] != 'e2929e10fccc0aa84e5776227e798abc07cedabf':
         raise ValueError('Animation provenance mismatch')
@@ -152,7 +154,10 @@ def export_clips(root, model, center, scale, output):
         # the entire long idle clip. Ambient ledge animation is pending.
         if asset['id']==573:frames=1;looping=True
         legacy={499,501,509,513,518,606,573,572}
-        step=1 if asset['id'] in legacy else 2
+        # Fast rotations need authored integer-tick poses. Cartesian vertex
+        # interpolation across two ticks shortens limbs on large rotations.
+        full_rate=523<=asset['id']<=540 or asset['id'] in attack_ids
+        step=1 if asset['id'] in legacy or full_rate else 2
         ticks=frames
         sample_frames=list(range(0,frames,step))
         if not looping and sample_frames[-1]!=frames-1:sample_frames.append(frames-1)
@@ -242,7 +247,7 @@ def export_clips(root, model, center, scale, output):
     lines += ['};', f'const unsigned mario_clip_count = {len(clips)};']
     lines.append('const unsigned mario_damage_clips[17] = {' + ','.join(
         str(next(i for i,c in enumerate(clips) if c['id']==fid)) for fid in range(523,540)) + '};')
-    for name,fid in [('dash',504),('run',505),('brake',506),('capture',565)]:
+    for name,fid in [('dash',504),('run',505),('brake',506),('capture',565),('damage_fall',540)]:
         lines.append(f'const unsigned mario_{name}_clip={next(i for i,c in enumerate(clips) if c["id"]==fid)};')
     (output / 'mario_clips.c').write_text('\n'.join(lines)+'\n')
     (output / 'animation-info.json').write_text(json.dumps(clips, indent=2))

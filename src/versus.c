@@ -26,6 +26,13 @@ void versus_init(Versus *v)
 }
 int versus_captured(const Versus *v,unsigned i)
 {return v->fighter[1-i].captured;}
+int versus_damage_pose(const Versus *v,unsigned i)
+{
+    const DamageReaction *r=&v->reaction[i];
+    if(!r->active)return -1;
+    if(v->stun[i] || r->age<mario_damage_ticks[r->pose])return (int)r->pose;
+    return v->fighter[i].player.state==SCENE_AIR && r->pose>=12?17:-1;
+}
 static void target_snapshot(Versus *v,unsigned i)
 {
     CombatScene *s=&v->fighter[i];unsigned j=1-i;
@@ -60,7 +67,11 @@ void versus_step(Versus *v,const CombatInput input[2])
         SceneState old_state=s->player.state;
         int old_attack=s->attack_frame;
         combat_update(s,in);
-        if(v->stun[i])++v->reaction[i].age;
+        if(v->reaction[i].active) {
+            ++v->reaction[i].age;
+            if(!v->stun[i] && (s->attack_frame>=0 || s->player.air_jumps!=jumps ||
+               s->player.state==SCENE_KNEE || in.motion.stick_x))v->reaction[i].active=0;
+        }
         /* Decay the external vector independently of ordinary gravity/drift.
          * Source air decay 1.7; ground damage friction = traction6 * .25.
          * Flat default surface material; no per-frame sqrt. */
@@ -77,7 +88,9 @@ void versus_step(Versus *v,const CombatInput input[2])
         }
         if(s->player.landings!=lands) {
             sound_event(v,SOUND_LAND,i);
-            if(v->stun[i]) {v->stun[i]=6;v->reaction[i].pose=3;v->reaction[i].age=0;}
+            /* Actual landing animation replaces airborne damage. */
+            v->reaction[i].active=0;
+            if(v->stun[i])v->stun[i]=6;
         }
         if((old_state==SCENE_KNEE && s->player.state==SCENE_AIR) || s->player.air_jumps!=jumps)
             sound_event(v,SOUND_JUMP,i);
@@ -118,7 +131,9 @@ void versus_step(Versus *v,const CombatInput input[2])
         if(s->hits!=before_hits[i]) {
             v->percent[j]=s->percent;v->stun[j]=s->hitstun;v->launch[j]=s->damage_vx;
             v->launch_y[j]=s->damage_vy;
-            v->reaction[j]=(DamageReaction){s->damage_pose,0,
+            /* Tick0 of these clips is a neutral setup pose. Show the first
+             * authored recoil pose at contact, including during hitstop. */
+            v->reaction[j]=(DamageReaction){s->damage_pose,1,1,
                 1.7f*s->damage_vx/s->damage_kb,1.7f*s->damage_vy/s->damage_kb};
             v->fighter[j].player=s->target;
             v->fighter[j].attack_frame=-1;v->fighter[j].dash_ticks=0;
@@ -130,6 +145,7 @@ void versus_step(Versus *v,const CombatInput input[2])
             v->fighter[j].player=s->target;
             v->fighter[j].attack_frame=-1;
             v->stun[j]=0;v->launch[j]=v->launch_y[j]=0;
+            v->reaction[j].active=0;
             v->fighter[j].player.hit_vx=v->fighter[j].player.hit_vy=0;
         }
     }

@@ -67,10 +67,20 @@ int main(void)
     v.reaction[1].decay_y=-1.7f;
     versus_step(&v,input);
     assert(v.fighter[1].player.state==SCENE_LAND && !v.launch_y[1]);
-    assert(v.stun[1]==6 && v.reaction[1].age==0);
+    assert(v.stun[1]==6 && !v.reaction[1].active && versus_damage_pose(&v,1)==-1);
     /* After vector exhaustion there is no sign reversal / phantom impulse. */
     v.fighter[1].player.y=2000;v.fighter[1].player.state=SCENE_AIR;
     v.launch[1]=.5f;v.launch_y[1]=0;v.reaction[1].decay_x=1.7f;
     versus_step(&v,input);assert(v.launch[1]==0 && v.launch_y[1]==0);
+    v=strike(MOVE_JAB1,0);v.freeze=0;input[1]=(CombatInput){0};
+    for(unsigned t=0;t<9;++t)versus_step(&v,input);
+    assert(!v.stun[1] && versus_damage_pose(&v,1)>=0); /* Finish short reaction. */
+    for(unsigned t=0;t<15;++t)versus_step(&v,input);
+    assert(versus_damage_pose(&v,1)==-1);
+    v=strike(MOVE_USMASH,100);v.freeze=0;v.stun[1]=0;
+    v.reaction[1].age=mario_damage_ticks[v.reaction[1].pose];
+    assert(versus_damage_pose(&v,1)==17); /* Strong launch continues as tumble. */
+    input[1].attack=1;versus_step(&v,input);
+    assert(v.fighter[1].attack_frame>=0 && versus_damage_pose(&v,1)==-1);
     puts("PASS: source damage angles/levels/hitlag, vertical launch, frozen reactions/audio, input lock, landing and decay");
 }

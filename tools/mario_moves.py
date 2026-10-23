@@ -136,6 +136,9 @@ def export(root,output,clips,bones):
     lines+=['{'+','.join(map(str,f))+'},' for f in allframes];lines+=['};','const MoveDesc mario_moves[MOVE_COUNT] = {']
     lines += [f'{{"{s[0]}",{d[0]},{d[1]},{d[2]}}},' for s,d in zip(SPECS,descs)]
     lines+=['};'];(output/'mario_moves.c').write_text('\n'.join(lines)+'\n')
+    with (output/'mario_moves.c').open('a') as f:
+        f.write('const unsigned mario_damage_ticks[17] = {'+','.join(
+            str(by_id[fid][1]['ticks']) for fid in range(523,540))+'};\n')
     priority=[0,1,2,24,27,26,21,22,23,5,7,8,11,14,15,16,17,18,19,20,3]
     order=priority+[i for i in range(len(SPECS)) if i not in priority]
     with (output/'mario_moves.c').open('a') as f:

@@ -30,7 +30,7 @@ class FigatreeTests(unittest.TestCase):
             self.assertLessEqual(error,2.1,c['name'])
             self.assertAlmostEqual(error,c['compact_max_axis_error_world'])
             total+=source.size+12
-        self.assertLess(total,800*1024)  # 67 shared clips, including damage.
+        self.assertLess(total,1500*1024)  # Full repertoire + damage, shared bank.
 
     def test_native_compact_decode_matches_offline_quantization(self):
         import numpy as np
@@ -53,7 +53,7 @@ class FigatreeTests(unittest.TestCase):
         source=(ROOT/'upstream/ssb-decomp-re/src/ft/ftdata.c').read_text().split('FTMotionDesc dFTMarioMotionDescs[] =')[1].split('};')[0]
         flags=dict(re.findall(r'\{ &llFTMarioAnim(\w+)FileID, [^,]+, ([^}]+)\}',source))
         clips=json.loads(path.read_text())
-        self.assertEqual(len(clips),67)
+        self.assertEqual(len(clips),68)
         for c in clips:
             original=flags.get(names[c['id']],'')
             expected='TransN' if 'XROTN_JOINT' in original else 'XRotN' if 'TRANSN_JOINT' in original else None
@@ -61,6 +61,9 @@ class FigatreeTests(unittest.TestCase):
             # hiddenparts[0] -> root2 (XRotN), hiddenparts[1] -> root1 (TransN).
             self.assertEqual(c['auxiliary'],expected,c['name'])
             self.assertEqual(c['sample_ticks'][0],0)
+            from mario_moves import SPECS
+            if 523<=c['id']<=540 or c['id'] in {s[1] for s in SPECS}:
+                self.assertEqual(c['frame_step'],1)
             if not c['loop']:self.assertEqual(c['sample_ticks'][-1],c['ticks']-1)
             self.assertEqual(c['frames'],len(c['sample_ticks']))
 
@@ -146,7 +149,7 @@ class FigatreeTests(unittest.TestCase):
         path = ROOT / 'build/model/animation-info.json'
         if not path.exists(): self.skipTest('Local converted assets required')
         clips = json.loads(path.read_text())
-        self.assertEqual([c['frames'] for c in clips[:12]], [50, 60, 41, 10, 8, 19, 1, 31, 46, 9, 21, 3])
+        self.assertEqual([c['frames'] for c in clips[:12]], [50, 60, 41, 10, 8, 19, 1, 31, 46, 9, 41, 3])
         for clip in clips:
             if clip['id']!=573:self.assertGreater(clip['max_change_from_first_fixed'], 0)
             else:self.assertEqual(clip['frames'],1)
@@ -157,7 +160,7 @@ class FigatreeTests(unittest.TestCase):
             # get-up), so the sequence bounds exceed the standing body size.
             legacy={499,501,509,513,518,606,573,511,512,572,637,541}
             self.assertLess(max(upper[i]-lower[i] for i in range(3)),800 if clip['id'] in legacy else 1400)
-        self.assertEqual([(c['ticks'],c['frame_step']) for c in clips[7:12]],[(61,2),(91,2),(9,1),(41,2),(6,2)])
+        self.assertEqual([(c['ticks'],c['frame_step']) for c in clips[7:12]],[(61,2),(91,2),(9,1),(41,1),(6,2)])
 
 
 if __name__ == '__main__': unittest.main()
