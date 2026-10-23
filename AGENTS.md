@@ -71,3 +71,11 @@
   hardware-tested. Consume transition-held buttons until release to prevent
   confirmation/retry A from jumping. Shared controls text is checked against
   the 32-column console layout. See docs/menu-prueba11.md.
+- Prueba12 adds ROM-derived damage reactions (resources523..539; FlyRoll
+  converted but reserved), source hitlag/angle thresholds and independent damage
+  impulse in 1v1. Preserve normal gravity, source air decay1.7 and flat ground
+  traction*.25. Landing recovery6 is provisional; full tumble/tech/DI are absent.
+  Seven own synthesized PCM8 effects share a 27360-byte bank, max4 hardware
+  channels. They are not original game sounds or voices. Host mock tests cover
+  priority and channel reuse; audio/feel/performance still need physical DS.
+  Preserve camera/menu behavior and all old packages. See docs/impactos-prueba12.md.

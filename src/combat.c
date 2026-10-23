@@ -3,8 +3,11 @@
 #include "combat.h"
 #include "motion.h"
 #include <string.h>
+#include "damage_angles.h"
 static int air(const MotionScene *p) {return p->state==SCENE_AIR;}
 static int ground(const MotionScene *p) {return p->state==SCENE_WAIT || p->state==SCENE_WALK;}
+static int hurt_air(const MotionScene *p)
+{return p->state==SCENE_AIR || p->state==SCENE_SPECIAL_HI || p->state==SCENE_SPECIAL_FALL || p->state==SCENE_CLIFF || p->state==SCENE_CLIMB;}
 static int tornado(MarioMove m) {return m==MOVE_TORNADO || m==MOVE_TORNADO_AIR;}
 static const MoveFrame *at(MarioMove m,unsigned t)
 {const MoveDesc *d=&mario_moves[m];if(t>=d->ticks)t=d->ticks-1;return &mario_move_frames[d->first+t];}
@@ -58,29 +61,44 @@ static int overlap(const MotionScene *p,float x,float y,float radius)
     float yy=y;if(yy<p->y+80)yy=p->y+80;if(yy>p->y+330)yy=p->y+330;
     float dx=p->x-x,dy=yy-y,r=radius+70;return dx*dx+dy*dy<=r*r;
 }
-static void damage(CombatScene *s,const MoveHit *h,int dir)
+static void damage(CombatScene *s,const MoveHit *h,int dir,float impact_y)
 {
     float kb=combat_knockback(s->percent,h),cs=h->cos_angle/4096.0f,sn=h->sin_angle/4096.0f;
-    /* Simplified Sakurai branch; the narrow transition and slope response
-     * remain outside this reduced damage solver. */
+    int airborne=hurt_air(&s->target);
+    /* US ftCommonDamageGetKnockbackAngle: 43 air / 0..42.5 ground.
+     * Half-degree lookup bounds angle error to .25 degrees, no runtime trig. */
     if(h->angle==361) {
-        if(air(&s->target) || kb>=32)cs=sn=.70710678f;
-        else {cs=1;sn=0;}
+        float angle=airborne?43:kb<32?0:(kb-32)/.099998474f*42.5f+1;
+        if(!airborne && angle>42.5f)angle=42.5f;
+        unsigned index=(unsigned)(angle*2+.5f);
+        cs=damage_angles[index][0]/4096.0f;sn=damage_angles[index][1]/4096.0f;
     }
-    s->damage_vx=kb*cs*dir;s->target.vy=kb*sn;
-    if(s->target.vy!=0 || air(&s->target)) {
-        s->target.state=SCENE_AIR;s->target.platform=-1;s->target.jumps_used=1;
+    s->damage_kb=kb;s->damage_vx=kb*cs*dir;s->damage_vy=kb*sn;
+    s->target.vx=0;s->target.vy=s->duel_mode?0:s->damage_vy;
+    s->target.hit_vx=s->target.hit_vy=0;
+    s->target.facing=-dir;s->target.air_jump=0;
+    if(s->damage_vy!=0 || airborne) {
+        s->target.state=SCENE_AIR;s->target.platform=-1;
+        if(!airborne)s->target.jumps_used=1;
+    } else {
+        s->target.state=SCENE_WAIT;s->target.state_ticks=0;
     }
     s->hitstun=(unsigned)(kb/1.875f);if(!s->hitstun)s->hitstun=1;
+    unsigned level=s->hitstun<12?0:s->hitstun<24?1:s->hitstun<32?2:3;
+    float height=impact_y-s->target.y;
+    unsigned zone=height>280?0:height<140?2:1;
+    s->damage_pose=level<3?(airborne?9+level:zone*3+level):12+zone;
+    if(level==3 && sn>.93969f)s->damage_pose=15;
+    s->damage_amount=h->damage;
     s->percent+=h->damage;if(s->percent>999)s->percent=999;
-    ++s->hits;s->hitstop=4;
+    ++s->hits;s->hitstop=h->damage/3+5;
 }
 static void release_throw(CombatScene *s)
 {
     MoveHit h={0};h.damage=s->move==MOVE_THROW_B?16:12;h.angle=45;h.scale=70;
     h.base=s->move==MOVE_THROW_B?70:80;h.cos_angle=h.sin_angle=2896;
     int dir=s->attack_facing*(s->move==MOVE_THROW_B?-1:1);
-    s->target.x=s->player.x+dir*220;s->captured=0;damage(s,&h,dir);
+    s->target.x=s->player.x+dir*220;s->captured=0;damage(s,&h,dir,s->target.y+180);
 }
 static void spawn(CombatScene *s,const MoveFrame *f)
 {
@@ -104,7 +122,7 @@ static void projectiles(CombatScene *s)
         }
         if(b->life && !s->captured && !s->target_immune && overlap(&s->target,b->x,b->y,100)) {
             MoveHit h={0};h.damage=7;h.angle=361;h.scale=25;h.base=10;
-            damage(s,&h,b->facing);b->life=0;
+            damage(s,&h,b->facing,b->y);b->life=0;
         }
     }
 }
@@ -265,7 +283,7 @@ void combat_resolve(CombatScene *s)
         for(unsigned i=0;i<f->count && !s->captured && !s->target_immune;++i) {
             const MoveHit *h=&mario_move_hits[f->first+i];uint64_t bit=UINT64_C(1)<<h->strike;
             if(s->connected_strikes&bit)continue;
-            if(!(h->ground_air&(air(&s->target)?1:2)))continue;
+            if(!(h->ground_air&(hurt_air(&s->target)?1:2)))continue;
             if(overlap(&s->target,s->player.x+h->x*s->attack_facing,s->player.y+h->y,h->radius)) {
                 s->connected_strikes|=bit;s->attack_connected=1;
                 if(s->move==MOVE_GRAB) {
@@ -274,7 +292,7 @@ void combat_resolve(CombatScene *s)
                     combat_start_move(s,MOVE_GRAB_HOLD);
                     break;
                 }
-                else damage(s,h,(s->target.x-s->player.x)>=0?1:-1);
+                else damage(s,h,(s->target.x-s->player.x)>=0?1:-1,s->player.y+h->y);
             }
         }
     }
