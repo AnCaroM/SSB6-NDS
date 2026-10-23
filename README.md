@@ -21,6 +21,8 @@ esos recursos y también se excluyen del repositorio y de la CI. Consultar
 - 68 clips compartidos; ataques y daño conservan cada cuadro original.
 - Reacciones de daño completas, caída tras lanzamiento y transición de salida;
   sonido provisional retirado en [Prueba13](docs/animaciones-prueba13.md).
+- Efectos y voces originales de Mario convertidos de la ROM del usuario
+  ([Prueba14](docs/sonido-prueba14.md), sin probar en DS).
 - Pruebas de lógica en PC, presupuestos DS y herramientas de inspección.
 - Pantalla de inicio y selección de modo (Prueba11, sin probar en DS);
   ver [docs/menu-prueba11.md](docs/menu-prueba11.md).

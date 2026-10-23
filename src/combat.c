@@ -89,7 +89,7 @@ static void damage(CombatScene *s,const MoveHit *h,int dir,float impact_y)
     unsigned zone=height>280?0:height<140?2:1;
     s->damage_pose=level<3?(airborne?9+level:zone*3+level):12+zone;
     if(level==3 && sn>.93969f)s->damage_pose=15;
-    s->damage_amount=h->damage;
+    s->damage_amount=h->damage;s->damage_sound=h->sound;
     s->percent+=h->damage;if(s->percent>999)s->percent=999;
     ++s->hits;s->hitstop=h->damage/3+5;
 }
@@ -121,7 +121,8 @@ static void projectiles(CombatScene *s)
             break;
         }
         if(b->life && !s->captured && !s->target_immune && overlap(&s->target,b->x,b->y,100)) {
-            MoveHit h={0};h.damage=7;h.angle=361;h.scale=25;h.base=10;
+            /* US MarioSpecial1 fireball attributes: sfx 28 = BurnS. */
+            MoveHit h={0};h.damage=7;h.angle=361;h.scale=25;h.base=10;h.sound=SOUND_BURN_S;
             damage(s,&h,b->facing,b->y);b->life=0;
         }
     }

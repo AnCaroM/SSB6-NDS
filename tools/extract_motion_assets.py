@@ -1,6 +1,7 @@
 """Decode original Mario locomotion clips using the already-built VPK tool."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
 import subprocess
@@ -30,7 +31,7 @@ def main():
     if hashlib.sha1(rom).hexdigest() != EXPECTED_SHA1:
         raise ValueError('Expected the verified US v1.0 ROM')
     output = ROOT / 'build/assets/us'
-    decoder = ROOT / 'build/assets-tools/vpk_decode.exe'
+    decoder = ROOT / 'build/assets-tools' / ('vpk_decode.exe' if os.name == 'nt' else 'vpk_decode')
     report = [];weapons=[]
     for fid, name in {**CLIPS,297:'MarioSpecial3',204:'MarioSpecial1'}.items():
         flags, intern, packed, extern, decoded = struct.unpack_from('>I4H', rom, 0x1ac870 + fid*12)

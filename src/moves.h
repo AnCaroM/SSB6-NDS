@@ -1,6 +1,7 @@
 #ifndef SSB_MOVES_H
 #define SSB_MOVES_H
 #include <stdint.h>
+#include "fight_sound.h"
 typedef enum {
  MOVE_JAB1,MOVE_JAB2,MOVE_JAB3,MOVE_DASH,
  MOVE_FTILT_HI,MOVE_FTILT,MOVE_FTILT_LO,MOVE_UTILT,MOVE_DTILT,
@@ -14,8 +15,9 @@ typedef struct {
  int16_t x,y,radius,damage,angle,scale,weight,base;
  uint8_t strike,ground_air;
  int16_t cos_angle,sin_angle;
+ uint8_t sound; /* FightSound for fgm_kind/level, 255 none */
 } MoveHit;
-typedef struct { uint16_t first; uint8_t count,flags; int16_t spawn_x,spawn_y,grab_x,grab_y; } MoveFrame;
+typedef struct { uint16_t first; uint8_t count,flags; int16_t spawn_x,spawn_y,grab_x,grab_y; uint8_t sound[2]; } MoveFrame;
 typedef struct { const char *name; uint16_t clip,ticks,first; } MoveDesc;
 extern const MoveHit mario_move_hits[];
 extern const MoveFrame mario_move_frames[];

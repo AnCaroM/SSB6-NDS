@@ -88,3 +88,10 @@
   recovery blend. Separate --animation-review ROM scripts six attacks mirrored
   at one-third speed for melonDS inspection; never package it as the playable
   release. See docs/animaciones-prueba13.md for validation and limits.
+- User approved the original-sound previews. Prueba14 converts 32 ROM sounds
+  (B1_sounds2 via fgm.ucd/fgm.tbl, first note per articulation, pitch-resampled,
+  fork layers mixed; no envelopes/LFOs) to PCM8 16 kHz in build/audio, never
+  published. Hit sounds come from hitbox fgm_kind/level, swings/voices from motion
+  script events; smash voice rotates instead of random. Keep fight_sound.h and
+  tools/fight_sounds.py in the same order. Not yet heard on DS. See
+  docs/sonido-prueba14.md and docs/estudio-sonido.md.

@@ -42,7 +42,8 @@ def main():
         audio=json.loads((ROOT/'build/audio/audio-info.json').read_text())
         report['shared_audio_pcm_bytes']=audio['bytes']
         report['audio_channels']=audio['channel_limit']
-        if audio['bytes']>65536:raise ValueError('Provisional audio bank exceeded 64 KiB')
+        # Original ROM effects/voices, PCM8 16 kHz. Revisit if more fighters add voices.
+        if audio['bytes']>262144:raise ValueError('Audio bank exceeded 256 KiB')
     elif args.demo=='versus':
         report['shared_audio_pcm_bytes']=0;report['audio_channels']=0
     if report['shared_texture_bytes']>report['texture_capacity_bytes']: raise ValueError('Texture banks exceeded')
