@@ -30,7 +30,9 @@ def main():
     report = {'demo':args.demo, 'arm9_static_bytes':sum(sizes), 'arm9_static_budget':2621440,
               'shared_texture_bytes':stage_textures+512+sum(t['padded_width']*t['padded_height']*2 for t in mesh['textures']),
               'texture_capacity_bytes':texture_capacity, 'instances':instances,
-              'shared_pose_bytes':sum(c['compact_pose_bytes'] if info.get('compact_poses') else c['frames']*c.get('pose_vertices',mesh['vertices_expanded'])*6 for c in clips),
+              'shared_pose_bytes':json.loads((ROOT/'build/model/skeleton-info.json').read_text())['bytes'] if info.get('skeletal_poses') else
+                  sum(c['compact_pose_bytes'] if info.get('compact_poses') else c['frames']*c.get('pose_vertices',mesh['vertices_expanded'])*6 for c in clips),
+              'skeletal_poses':info.get('skeletal_poses',False),
               'compact_poses':info.get('compact_poses',False),
               'polygons_with_stage_reserve':instances*mesh['triangles']+stage_poly+projectile_count,
               'vertices_with_stage_reserve':instances*mesh['vertices_expanded']+stage_vertices+projectile_count*4,

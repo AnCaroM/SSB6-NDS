@@ -95,3 +95,10 @@
   script events; smash voice rotates instead of random. Keep fight_sound.h and
   tools/fight_sounds.py in the same order. Not yet heard on DS. See
   docs/sonido-prueba14.md and docs/estudio-sonido.md.
+- Prueba15 (step 1 of adding Link) renders Mario from a bone-pose bank:
+  per-tick local joint channels (only varying ones stored), rebuilt with DS
+  matrix commands into stack slots 3..29 and rigid per-vertex glRestoreMatrix.
+  232563 bytes vs 1.25 MiB; ARM9 static 823276. Max 0.35 units offline, 1.33
+  in host fixed-point emulation (bound 2.1). Build with --skeletal-poses; keep
+  compact/16-bit options. Not yet seen in emulator or DS. Next: generalize the
+  converter for Link's model/animations. See docs/huesos-prueba15.md.

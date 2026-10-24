@@ -52,6 +52,11 @@ def main():
         '-Isrc','-Ibuild/model','build/model/mario_clips.c','tests/test_pose_bank.c',
         '-o',str(pose_test)],cwd=ROOT,env=env,check=True)
     result += subprocess.check_output([str(pose_test)],text=True)
+    skeleton_test=build/('test_skeleton'+suffix)
+    subprocess.run(compiler+['-std=c11','-O2','-UNDEBUG','-Wall','-Wextra','-Werror',
+        '-Isrc','-Ibuild/model','build/model/mario_clips.c','build/model/mario_skeleton.c','tests/test_skeleton.c',
+        '-o',str(skeleton_test),'-lm'],cwd=ROOT,env=env,check=True)
+    result += subprocess.check_output([str(skeleton_test)],text=True)
     subprocess.run([sys.executable,str(ROOT/'tools/extract_fight_audio.py')],check=True)
     audio_test=build/('test_audio'+suffix)
     subprocess.run(compiler+['-std=c11','-O2','-UNDEBUG','-Wall','-Wextra','-Werror',
