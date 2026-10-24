@@ -25,6 +25,8 @@ esos recursos y también se excluyen del repositorio y de la CI. Consultar
   ([Prueba14](docs/sonido-prueba14.md), sin probar en DS).
 - Animación por huesos con la pila de matrices de la DS: 227 KiB en lugar de
   1,25 MiB ([Prueba15](docs/huesos-prueba15.md), sin probar en DS).
+- Link convertido desde la ROM (modelo y 72 animaciones) en un visor del menú;
+  aún no combate ([Prueba16](docs/link-prueba16.md), sin probar en DS).
 - Pruebas de lógica en PC, presupuestos DS y herramientas de inspección.
 - Pantalla de inicio y selección de modo (Prueba11, sin probar en DS);
   ver [docs/menu-prueba11.md](docs/menu-prueba11.md).

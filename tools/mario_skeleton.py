@@ -102,10 +102,10 @@ def export_skeleton(output,model,vertices,mapping,clips,skeleton,center,scale):
         worst=max(worst,error)
         lines.append(f'static const int16_t skel_base_{index}[{flat.shape[1]}]={{'+','.join(map(str,flat[0]))+'};')
         if varying:
-            lines.append(f'static const uint8_t skel_channels_{index}[]={{'+','.join(map(str,varying))+'};')
+            lines.append(f'static const uint16_t skel_channels_{index}[]={{'+','.join(map(str,varying))+'};')
             lines.append(f'static const int16_t skel_frames_{index}[]={{'+
                          ','.join(map(str,flat[:,varying].flatten()))+'};')
-        bytes_=flat.shape[1]*2+len(varying)*(1+2*len(q))
+        bytes_=flat.shape[1]*2+len(varying)*(2+2*len(q))
         total+=bytes_
         ref=lambda name:f'{name}_{index}' if varying else 'NULL'
         table.append(f'{{{ref("skel_frames")},{ref("skel_channels")},skel_base_{index},{len(q)},{len(varying)}}},')

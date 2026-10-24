@@ -17,6 +17,10 @@ int main(void)
     assert(menu_step(&m,MENU_KEY_A,-1)==MENU_PLAY_TEST);
     menu_init(&m);menu_step(&m,MENU_KEY_START,-1);menu_step(&m,MENU_KEY_DOWN,-1);
     assert(menu_step(&m,MENU_KEY_START,-1)==MENU_PLAY_DEMO);
+    /* Third option opens the fighter viewer. */
+    menu_init(&m);menu_step(&m,MENU_KEY_START,-1);menu_step(&m,MENU_KEY_DOWN,-1);menu_step(&m,MENU_KEY_DOWN,-1);
+    assert(m.cursor==MENU_OPTION_VIEWER && menu_step(&m,MENU_KEY_A,-1)==MENU_VIEW_FIGHTER);
+    assert(menu_step(&m,0,MENU_FIRST_ROW+2*MENU_ROW_SPACING)==MENU_VIEW_FIGHTER);
     /* Controls page opens from the list and returns to it. */
     menu_init(&m);menu_step(&m,MENU_KEY_START,-1);m.cursor=MENU_OPTION_CONTROLS;
     assert(menu_step(&m,MENU_KEY_A,-1)==MENU_STAY && m.screen==MENU_CONTROLS);

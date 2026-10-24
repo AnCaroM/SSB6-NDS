@@ -40,6 +40,11 @@ def main():
               'limits':['Static ELF is not peak main RAM','Stage reserve must be revised if stage geometry changes',
                         'Submitted geometry differs from clipped geometry','Runtime GPU/CPU time needs hardware measurement']}
     if report['arm9_static_bytes']>report['arm9_static_budget']: raise ValueError('ARM9 static RAM budget exceeded')
+    if 'build/fighters/link/link_model.c' in info['sources']:
+        # Link viewer: textures share the A+B banks; its bone-pose bank is separate.
+        link=json.loads((ROOT/'build/fighters/link/link-info.json').read_text())
+        report['shared_texture_bytes']+=link['texture_bytes'];report['link_pose_bytes']=link['pose_bytes']
+        report['link_texture_bytes']=link['texture_bytes']
     if args.demo=='versus' and info.get('audio_enabled',True):
         audio=json.loads((ROOT/'build/audio/audio-info.json').read_text())
         report['shared_audio_pcm_bytes']=audio['bytes']

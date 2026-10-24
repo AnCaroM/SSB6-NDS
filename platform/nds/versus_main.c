@@ -8,6 +8,8 @@
 #include "stage_render.h"
 #include "recovery_demo.h"
 #include "fight_audio.h"
+#include "fighter_render.h"
+#include "link_model.h"
 #ifdef ANIMATION_REVIEW
 #include "animation_review.h"
 #endif
@@ -121,7 +123,7 @@ static void draw_title(int prompt)
         at(6,10,RED,"N   D   S");
         at(10,2,WHITE,"Port experimental de SSB64");
         at(11,2,WHITE,"para Nintendo DS / DS Lite");
-        at(21,1,GREEN,"Prueba 15 - mapa: Dream Land");
+        at(21,1,GREEN,"Prueba 16 - mapa: Dream Land");
         at(22,1,GREEN,"No es el juego completo");
         prompt=1;
     }
@@ -130,8 +132,8 @@ static void draw_title(int prompt)
 
 static void draw_select(const Menu *m)
 {
-    static const char *const names[MENU_OPTION_COUNT]={"MODO DE PRUEBA","DEMO CPU vs CPU","CONTROLES"};
-    static const char *const notes[MENU_OPTION_COUNT]={"Mario vs CPU - 3 vidas","La CPU pelea contra si misma","Botones y acciones"};
+    static const char *const names[MENU_OPTION_COUNT]={"MODO DE PRUEBA","DEMO CPU vs CPU","VISOR DE LINK","CONTROLES"};
+    static const char *const notes[MENU_OPTION_COUNT]={"Mario vs CPU - 3 vidas","La CPU pelea contra si misma","Animaciones originales","Botones y acciones"};
     iprintf("\x1b[2J");
     at(1,1,CYAN,"+----------------------------+");
     at(2,1,CYAN,"|");at(2,6,YELLOW,"SELECCIONA UN MODO");at(2,30,CYAN,"|");
@@ -175,6 +177,46 @@ static void draw_hud_frame(int watch)
     at(15,0,CYAN,"--------------------------------");
 }
 
+/* Fighter viewer: converted Link clips on the generic bone renderer. */
+static FighterRender link_render;
+typedef struct {unsigned clip,age,slow;int paused,facing,dirty;} Viewer;
+
+static void draw_viewer_frame(void)
+{
+    iprintf("\x1b[2J");
+    at(0,0,CYAN,"================================");
+    at(1,1,YELLOW,"VISOR DE LINK");at(1,20,WHITE,"Dream Land");
+    at(2,0,CYAN,"================================");
+    at(10,1,WHITE,"IZQ/DER  animacion");
+    at(11,1,WHITE,"A pausa  R paso   Y lento");
+    at(12,1,WHITE,"X girar  B volver al menu");
+    at(14,0,CYAN,"--------------------------------");
+    at(16,1,GREEN,"Modelo y animaciones de la ROM");
+    at(17,1,GREEN,"Sin combate todavia");
+}
+
+static void draw_viewer(const Viewer *v)
+{
+    const FighterClip *c=&link_model.clips[v->clip];unsigned ticks=c->ticks;
+    unsigned tick=c->loop?v->age%ticks:(v->age<ticks?v->age:ticks-1);
+    iprintf("\x1b[4;1H%s%2u/%u %s%-18s",WHITE,v->clip+1,link_model.clip_count,YELLOW,link_clip_names[v->clip]);
+    iprintf("\x1b[6;1H%sTic %3u/%-3u %s",WHITE,tick,ticks,c->loop?"bucle ":"      ");
+    iprintf("\x1b[7;1H%s%-8s%-10s",YELLOW,v->paused?"PAUSA":"",v->slow?"LENTO x1/3":"");
+}
+
+static void viewer_step(Viewer *v,unsigned down)
+{
+    unsigned n=link_model.clip_count;
+    if(down&KEY_RIGHT) {v->clip=(v->clip+1)%n;v->age=0;v->dirty=1;}
+    if(down&KEY_LEFT) {v->clip=(v->clip+n-1)%n;v->age=0;v->dirty=1;}
+    if(down&KEY_A) {v->paused=!v->paused;v->dirty=1;}
+    if(down&KEY_Y) {v->slow=!v->slow;v->dirty=1;}
+    if(down&KEY_X)v->facing=-v->facing;
+    static unsigned clock;
+    if(v->paused) {if(down&KEY_R) {++v->age;v->dirty=1;}}
+    else if(!v->slow || ++clock%3==0) {++v->age;if((v->age&3)==0)v->dirty=1;}
+}
+
 static const char *percent_color(unsigned percent)
 {return percent>=100?RED:percent>=50?YELLOW:WHITE;}
 
@@ -196,7 +238,7 @@ static void draw_hud(const Versus *match,int paused,int watch)
 int main(void)
 {
     consoleDemoInit();lcdMainOnTop();videoSetMode(MODE_0_3D);glInit();
-    if(!mario_render_init() || !dreamland_render_init()) {
+    if(!mario_render_init() || !dreamland_render_init() || !fighter_render_init(&link_render,&link_model)) {
         iprintf("Error al cargar recursos\n");while(pmMainLoop())swiWaitForVBlank();return 1;
     }
     emblem_init();fight_audio_init();
@@ -206,7 +248,8 @@ int main(void)
     FightCamera camera;camera_reset(&camera);
     Menu menu;menu_init(&menu);
     MenuInputGate input_gate={0};
-    int in_menu=!SCENE_AUTOPLAY,fade=16,prompt=-1,hud_dirty=1;
+    int in_menu=!SCENE_AUTOPLAY,fade=16,prompt=-1,hud_dirty=1,viewing=0;
+    Viewer viewer={0,0,0,0,1,1};
     unsigned clips[2]={0},ages[2]={0};int paused=0,watch=SCENE_AUTOPLAY,map_view=0;
     unsigned rendered_age[2]={0},blend_left[2]={0};
     int damage_pose[2]={-1,-1};MarioPoseBlend blends[2]={{0}};
@@ -231,7 +274,10 @@ int main(void)
             unsigned keys=((down&KEY_UP)?MENU_KEY_UP:0)|((down&KEY_DOWN)?MENU_KEY_DOWN:0)|
                 ((down&KEY_A)?MENU_KEY_A:0)|((down&KEY_B)?MENU_KEY_B:0)|((down&KEY_START)?MENU_KEY_START:0);
             MenuAction action=menu_step(&menu,keys,touch_row);
-            if(action!=MENU_STAY) {
+            if(action==MENU_VIEW_FIGHTER) {
+                in_menu=0;viewing=1;fade=16;viewer=(Viewer){0,0,0,0,1,1};
+                menu_input_arm(&input_gate,physical_held);draw_viewer_frame();
+            } else if(action!=MENU_STAY) {
                 in_menu=0;watch=action==MENU_PLAY_DEMO;fade=16;hud_dirty=1;
                 versus_init(&match);camera_reset(&camera);
                 menu_input_arm(&input_gate,physical_held);
@@ -257,6 +303,25 @@ int main(void)
                 actor(&match.fighter[i].player,match.fighter[i].player.facing,0,menu.ticks,i?RGB15(12,24,31):RGB15(31,31,31),NULL);
             glFlush(0);
             swiWaitForVBlank();
+            continue;
+        }
+        if(viewing) {
+            if(down&KEY_B) {
+                viewing=0;in_menu=1;menu_init(&menu);menu.screen=MENU_SELECT;menu.cursor=MENU_OPTION_VIEWER;fade=16;
+                swiWaitForVBlank();continue;
+            }
+            viewer_step(&viewer,down);
+            if(viewer.dirty) {viewer.dirty=0;draw_viewer(&viewer);}
+            float height=2600.0f/WORLD_UNIT,half_width=height*(2.0f/3.0f),bottom=-height*.5f;
+            glMatrixMode(GL_PROJECTION);glLoadIdentity();glOrtho(-half_width,half_width,bottom,height+bottom,.1,20);
+            glMatrixMode(GL_MODELVIEW);glLoadIdentity();
+            dreamland_render_background(-half_width,half_width,bottom,height+bottom);
+            glTranslatef32(0,floattof32(-700.0f/WORLD_UNIT),floattof32(-6));
+            dreamland_render_draw();
+            glPushMatrix();glRotateYi(viewer.facing>0?8192:-8192);
+            fighter_render_draw(&link_render,viewer.clip,viewer.age,0x7fff,NULL);
+            glPopMatrix(1);
+            glFlush(0);swiWaitForVBlank();
             continue;
         }
         int reset=(held&KEY_START) && (held&KEY_SELECT) && (down&(KEY_START|KEY_SELECT));

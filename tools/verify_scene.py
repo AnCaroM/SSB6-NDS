@@ -57,6 +57,12 @@ def main():
         '-Isrc','-Ibuild/model','build/model/mario_clips.c','build/model/mario_skeleton.c','tests/test_skeleton.c',
         '-o',str(skeleton_test),'-lm'],cwd=ROOT,env=env,check=True)
     result += subprocess.check_output([str(skeleton_test)],text=True)
+    for fighter in ('mario','link'):
+        subprocess.run([sys.executable,str(ROOT/'tools/convert_fighter.py'),'--fighter',fighter],check=True)
+    plan_test=build/('test_fighter_plan'+suffix)
+    subprocess.run(compiler+['-std=c11','-O2','-UNDEBUG','-Wall','-Wextra','-Werror','-Isrc',
+        'build/fighters/link/link_model.c','tests/test_fighter_plan.c','-o',str(plan_test),'-lm'],cwd=ROOT,env=env,check=True)
+    result += subprocess.check_output([str(plan_test)],text=True)
     subprocess.run([sys.executable,str(ROOT/'tools/extract_fight_audio.py')],check=True)
     audio_test=build/('test_audio'+suffix)
     subprocess.run(compiler+['-std=c11','-O2','-UNDEBUG','-Wall','-Wextra','-Werror',

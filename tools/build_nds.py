@@ -83,6 +83,10 @@ def main():
                 subprocess.run([sys.executable,str(ROOT/'tools/extract_fight_audio.py')],check=True)
                 flags.append('-I'+str(ROOT/'build/audio'))
                 sources+=['src/versus.c','src/menu.c','platform/nds/fight_audio.c','build/audio/fight_samples.c']
+                # Link viewer: generic converted fighter on the bone renderer.
+                subprocess.run([sys.executable,str(ROOT/'tools/convert_fighter.py'),'--fighter','link'],check=True)
+                flags.append('-I'+str(ROOT/'build/fighters/link'))
+                sources+=['platform/nds/fighter_render.c','build/fighters/link/link_model.c']
                 if args.animation_review:sources.append('src/animation_review.c')
             if args.demo in ('dreamland','versus'):
                 subprocess.run([sys.executable,str(ROOT/'tools/extract_dreamland.py')],check=True)
@@ -109,11 +113,11 @@ def main():
                       'scene': 'SSB Mario;Integration;Original model and clips',
                       'combat': 'SSB NDS;Prueba 02;Mario - combate de prueba',
                       'dreamland': 'SSB NDS;Prueba 09;Mario - animaciones revisadas',
-                      'versus': 'SSB NDS;Prueba 15;Animacion por huesos',
+                      'versus': 'SSB NDS;Prueba 16;Visor de Link',
                       'motion': 'SSB Motion;Research scene;Provisional movement'}[args.demo])], env=env, check=True)
     size_output = subprocess.check_output([str(size), str(elf)], text=True)
     inputs=sources + [p.relative_to(ROOT).as_posix() for folder in
-        ['src','platform/nds','build/model','build/dreamland','build/audio']
+        ['src','platform/nds','build/model','build/dreamland','build/audio','build/fighters/link']
         for p in (ROOT/folder).glob('*.h')]
     (build / (stem + '-build-info.json')).write_text(json.dumps({
         'compiler': subprocess.check_output([str(gcc), '--version'], text=True).splitlines()[0],
