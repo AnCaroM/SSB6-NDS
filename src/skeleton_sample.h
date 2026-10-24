@@ -14,7 +14,7 @@ static inline unsigned skeleton_tick(unsigned age,unsigned ticks,int loop,unsign
     return tick<stored?tick:stored-1;
 }
 
-static inline void skeleton_decode(const int16_t *base,const uint8_t *channels,const int16_t *frames,
+static inline void skeleton_decode(const int16_t *base,const uint16_t *channels,const int16_t *frames,
                                    unsigned varying,unsigned tick,unsigned count,int16_t *row)
 {
     memcpy(row,base,count*sizeof *row);

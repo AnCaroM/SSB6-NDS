@@ -102,3 +102,11 @@
   in host fixed-point emulation (bound 2.1). Build with --skeletal-poses; keep
   compact/16-bit options. Not yet seen in emulator or DS. Next: generalize the
   converter for Link's model/animations. See docs/huesos-prueba15.md.
+- Prueba16 (step 2 of Link) adds tools/convert_fighter.py: table-driven
+  (FTMotionDesc in ftdata.c, some entries unbraced; FTHiddenPart decides which
+  joints each animation table lists). It reproduces Mario's Prueba15 bone bank
+  exactly. Link: tree @0x3AE8, 32 joints, 19 matrix slots, 72 clips, 248176
+  pose bytes, 49920 texture bytes, shown in a menu viewer via
+  platform/nds/fighter_render.c. Default parts only (sword/shield in hand);
+  part swaps, faces and Link combat are pending. Not yet seen in emulator/DS.
+  See docs/link-prueba16.md.

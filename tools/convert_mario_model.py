@@ -19,8 +19,13 @@ EXPECTED = '157287d186182c4966a4019b478668e364c7f23624bf54ed598be2a170be526f'
 
 
 class Model:
-    def __init__(self, data, internal_chain_word=2):
+    def __init__(self, data, internal_chain_word=2, tree=0x2200, matanim=0x2680, parts=None):
+        # FTCommonPartContainer hi-detail JointTree and its AObjEvent32 table.
         self.data = data
+        self.tree = tree
+        self.matanim = matanim
+        # Optional {joint: display list offset or None} model-part override.
+        self.parts = parts or {}
         self.pointers = {}
         word = internal_chain_word
         while word != 0xffff:
@@ -62,7 +67,7 @@ class Model:
 
     def colors(self, joint):
         dispatch = self.ptr(joint * 4)
-        anim = self.ptr(0x2680 + joint * 4)
+        anim = self.ptr(self.matanim + joint * 4)
         result = []
         if dispatch is None:
             return result
@@ -273,8 +278,8 @@ class Model:
 
     def convert(self):
         stack = {}
-        for joint in range(32):
-            offset = 0x2200 + joint * 44
+        for joint in range(40):
+            offset = self.tree + joint * 44
             fields = struct.unpack_from('>II9f', self.data, offset)
             if fields[0] == 18:
                 break
@@ -289,7 +294,7 @@ class Model:
             local[:3, 3] = [tx, ty, tz]
             world = stack[depth - 1] @ local if depth else local
             stack[depth] = world
-            dl = self.ptr(offset + 4)
+            dl = self.parts[joint] if joint in self.parts else self.ptr(offset + 4)
             self.joints.append({'index': joint, 'depth': depth, 'display_list': dl})
             if dl is not None:
                 self.display_list(dl, world, joint)
@@ -337,7 +342,7 @@ extern const unsigned mario_dash_clip,mario_run_clip,mario_brake_clip,mario_capt
 extern const unsigned mario_damage_clips[17];
 extern const unsigned mario_damage_fall_clip;
 /* Bone-pose bank (MARIO_SKELETAL): channels per joint are tx,ty,tz,rx,ry,rz,sx,sy,sz. */
-typedef struct { const int16_t *frames; const uint8_t *channels; const int16_t *base; uint16_t ticks, varying; } MarioSkelClip;
+typedef struct { const int16_t *frames; const uint16_t *channels; const int16_t *base; uint16_t ticks, varying; } MarioSkelClip;
 typedef struct { int16_t x,y,z,joint; } MarioSkelVertex;
 extern const MarioSkelClip mario_skel_clips[];
 extern const int8_t mario_joint_parent[];

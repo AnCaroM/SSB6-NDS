@@ -29,6 +29,7 @@ static MenuAction choose(Menu *m)
 {
     if(m->cursor==MENU_OPTION_TEST)return MENU_PLAY_TEST;
     if(m->cursor==MENU_OPTION_DEMO)return MENU_PLAY_DEMO;
+    if(m->cursor==MENU_OPTION_VIEWER)return MENU_VIEW_FIGHTER;
     m->screen=MENU_CONTROLS;m->dirty=1;return MENU_STAY;
 }
 
