@@ -121,7 +121,7 @@ static void draw_title(int prompt)
         at(6,10,RED,"N   D   S");
         at(10,2,WHITE,"Port experimental de SSB64");
         at(11,2,WHITE,"para Nintendo DS / DS Lite");
-        at(21,1,GREEN,"Prueba 14 - mapa: Dream Land");
+        at(21,1,GREEN,"Prueba 15 - mapa: Dream Land");
         at(22,1,GREEN,"No es el juego completo");
         prompt=1;
     }

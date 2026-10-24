@@ -336,6 +336,14 @@ extern const uint16_t mario_fireball_pixels[256];
 extern const unsigned mario_dash_clip,mario_run_clip,mario_brake_clip,mario_capture_clip;
 extern const unsigned mario_damage_clips[17];
 extern const unsigned mario_damage_fall_clip;
+/* Bone-pose bank (MARIO_SKELETAL): channels per joint are tx,ty,tz,rx,ry,rz,sx,sy,sz. */
+typedef struct { const int16_t *frames; const uint8_t *channels; const int16_t *base; uint16_t ticks, varying; } MarioSkelClip;
+typedef struct { int16_t x,y,z,joint; } MarioSkelVertex;
+extern const MarioSkelClip mario_skel_clips[];
+extern const int8_t mario_joint_parent[];
+extern const unsigned mario_joint_count;
+extern const MarioSkelVertex mario_skel_vertices[];
+extern const int32_t mario_skel_scale,mario_skel_offset[3];
 '''
     (output / 'mario_mesh.h').write_text(header)
     with (output / 'mario_mesh.h').open('a') as f:
