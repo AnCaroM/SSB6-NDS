@@ -10,17 +10,18 @@ static void sound_event(Versus *v,FightSound sound,unsigned fighter)
 /* Sounds authored on the current tick of the move's original motion script. */
 static void move_sounds(Versus *v,unsigned i)
 {
-    const CombatScene *s=&v->fighter[i];const MoveDesc *d=&mario_moves[s->move];
+    const CombatScene *s=&v->fighter[i];const MoveDesc *d=&s->fighter->moves[s->move];
     unsigned t=(unsigned)s->attack_frame;if(t>=d->ticks)return;
     for(unsigned k=0;k<2;++k) {
-        unsigned sound=mario_move_frames[d->first+t].sound[k];
-        if(sound==SOUND_SMASH_RANDOM)sound=SOUND_VOICE_SMASH1+(v->smash_voice++)%3;
+        unsigned sound=s->fighter->frames[d->first+t].sound[k];
+        if(sound==SOUND_SMASH_RANDOM)sound=s->fighter->sounds.smash[(v->smash_voice++)%3];
         if(sound<SOUND_COUNT)sound_event(v,(FightSound)sound,i);
     }
 }
 static void fighter_reset(Versus *v,unsigned i,int respawn)
 {
     CombatScene *s=&v->fighter[i];combat_init_stage(s,STAGE_DREAMLAND);
+    combat_set_fighter(s,v->kinds[i]?v->kinds[i]:&fighter_mario);
     s->duel_mode=1;s->player.x=i?650:-650;s->player.facing=i?-1:1;
     s->facing=s->attack_facing=s->player.facing;
     if(respawn) {
@@ -30,9 +31,11 @@ static void fighter_reset(Versus *v,unsigned i,int respawn)
     v->percent[i]=v->stun[i]=0;v->launch[i]=v->launch_y[i]=0;
     v->reaction[i]=(DamageReaction){0};
 }
-void versus_init(Versus *v)
+void versus_init(Versus *v) {versus_init_fighters(v,&fighter_mario,&fighter_mario);}
+void versus_init_fighters(Versus *v,const Fighter *a,const Fighter *b)
 {
     memset(v,0,sizeof *v);v->winner=-1;v->stocks[0]=v->stocks[1]=3;
+    v->kinds[0]=a;v->kinds[1]=b;
     fighter_reset(v,0,0);fighter_reset(v,1,0);
 }
 int versus_captured(const Versus *v,unsigned i)
@@ -41,7 +44,7 @@ int versus_damage_pose(const Versus *v,unsigned i)
 {
     const DamageReaction *r=&v->reaction[i];
     if(!r->active)return -1;
-    if(v->stun[i] || r->age<mario_damage_ticks[r->pose])return (int)r->pose;
+    if(v->stun[i] || r->age<v->fighter[i].fighter->damage_ticks[r->pose])return (int)r->pose;
     return v->fighter[i].player.state==SCENE_AIR && r->pose>=12?17:-1;
 }
 static void target_snapshot(Versus *v,unsigned i)
@@ -87,7 +90,7 @@ void versus_step(Versus *v,const CombatInput input[2])
          * Source air decay 1.7; ground damage friction = traction6 * .25.
          * Flat default surface material; no per-frame sqrt. */
         if(grounded(&s->player) || s->player.state==SCENE_LAND) {
-            v->launch[i]=motion_ground_friction(s->player.hit_vx,1.5f);
+            v->launch[i]=motion_ground_friction(s->player.hit_vx,s->player.attr->traction);
             v->launch_y[i]=0;
         } else {
             float x=s->player.hit_vx,y=s->player.hit_vy;
@@ -98,14 +101,14 @@ void versus_step(Versus *v,const CombatInput input[2])
             if(y==0)v->launch_y[i]=0;
         }
         if(s->player.landings!=lands) {
-            sound_event(v,SOUND_LAND,i);
+            sound_event(v,(FightSound)s->fighter->sounds.land,i);
             /* Actual landing animation replaces airborne damage. */
             v->reaction[i].active=0;
             if(v->stun[i])v->stun[i]=6;
         }
         /* Mario motion scripts Jump/JumpAerial play these voices. */
-        if(s->player.air_jumps!=jumps)sound_event(v,SOUND_VOICE_JUMP_AIR,i);
-        else if(old_state==SCENE_KNEE && s->player.state==SCENE_AIR)sound_event(v,SOUND_VOICE_JUMP,i);
+        if(s->player.air_jumps!=jumps)sound_event(v,(FightSound)s->fighter->sounds.jump_air,i);
+        else if(old_state==SCENE_KNEE && s->player.state==SCENE_AIR)sound_event(v,(FightSound)s->fighter->sounds.jump,i);
         if(s->attack_frame>=0 && (s->attack_frame!=old_attack || s->move!=old_move))move_sounds(v,i);
     }
     int respawned=0;
@@ -115,7 +118,8 @@ void versus_step(Versus *v,const CombatInput input[2])
         if(p->respawns!=before_respawn[i] || p->x>6000 || p->x< -6000 || p->y>6000) {
             --v->stocks[i];fighter_reset(v,i,1);v->fighter[1-i].captured=0;respawned=1;
             /* ftCommonDead: attr dead_fgm_ids (voice, slam) + DeadExplodeL. */
-            sound_event(v,SOUND_VOICE_DEAD,i);sound_event(v,SOUND_DEAD_SLAM,i);
+            sound_event(v,(FightSound)v->fighter[i].fighter->sounds.dead,i);
+            sound_event(v,(FightSound)v->fighter[i].fighter->sounds.dead_slam,i);
             sound_event(v,SOUND_DEAD_EXPLODE,i);
         }
     }
@@ -153,7 +157,7 @@ void versus_step(Versus *v,const CombatInput input[2])
             v->fighter[j].brake_ticks=0;
             if(s->damage_sound!=SOUND_NONE)sound_event(v,s->damage_sound,j);
             /* ftCommonDamage compares hitstun with DAMAGEVOICE_MIN (80). */
-            if(s->hitstun>=80)sound_event(v,SOUND_VOICE_DAMAGE,j);
+            if(s->hitstun>=80)sound_event(v,(FightSound)v->fighter[j].fighter->sounds.damage,j);
             if(s->hitstop>v->freeze)v->freeze=s->hitstop;
         } else if(s->captured) {
             v->fighter[j].player=s->target;

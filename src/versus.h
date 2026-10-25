@@ -11,10 +11,12 @@ typedef struct {
     DamageReaction reaction[2];
     FightSoundEvent sounds[8];
     unsigned sound_count,smash_voice;
+    const Fighter *kinds[2];   /* character of each side (Mario if NULL) */
     unsigned tick,freeze,cpu_decisions;
     int winner; /* -1 playing, 0/1 winner, 2 draw */
 } Versus;
-void versus_init(Versus *v);
+void versus_init(Versus *v); /* Mario vs Mario */
+void versus_init_fighters(Versus *v,const Fighter *a,const Fighter *b);
 void versus_step(Versus *v,const CombatInput input[2]);
 CombatInput versus_cpu(const Versus *v,unsigned who);
 int versus_captured(const Versus *v,unsigned who);

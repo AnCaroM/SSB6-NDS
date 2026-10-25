@@ -74,7 +74,7 @@ int main(void)
         uint64_t got[2]={0};close_pair(&v);in[0]=in[1]=(CombatInput){0};in[0].attack=1;
         heard(&v,in,12,got);
         assert(HAS(got[0],SOUND_SWING_S)); /* Jab1 script tick2 LightSwingS. */
-        unsigned hit=mario_move_hits[mario_move_frames[mario_moves[MOVE_JAB1].first+2].first].sound;
+        unsigned hit=fighter_mario.hits[fighter_mario.frames[fighter_mario.moves[MOVE_JAB1].first+2].first].sound;
         assert(hit>=SOUND_PUNCH_S && hit<=SOUND_KICK_L && HAS(got[1],hit));
         assert(!HAS(got[1],SOUND_VOICE_DAMAGE)); /* Below hitstun 80. */
         got[0]=got[1]=0;versus_init(&v);in[0]=(CombatInput){0};in[0].motion.jump_held=1;

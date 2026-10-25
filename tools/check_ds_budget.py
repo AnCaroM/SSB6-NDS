@@ -40,17 +40,23 @@ def main():
               'limits':['Static ELF is not peak main RAM','Stage reserve must be revised if stage geometry changes',
                         'Submitted geometry differs from clipped geometry','Runtime GPU/CPU time needs hardware measurement']}
     if report['arm9_static_bytes']>report['arm9_static_budget']: raise ValueError('ARM9 static RAM budget exceeded')
-    if 'build/fighters/link/link_model.c' in info['sources']:
-        # Link viewer: textures share the A+B banks; its bone-pose bank is separate.
-        link=json.loads((ROOT/'build/fighters/link/link-info.json').read_text())
-        report['shared_texture_bytes']+=link['texture_bytes'];report['link_pose_bytes']=link['pose_bytes']
-        report['link_texture_bytes']=link['texture_bytes']
+    if 'build/fighters/mario/mario_model.c' in info['sources']:
+        # Prueba17+: both selectable fighters are generic converted models that
+        # share the A+B texture banks; worst case is Link vs Link geometry.
+        fighters=[json.loads((ROOT/f'build/fighters/{f}/{f}-info.json').read_text()) for f in ('mario','link')]
+        report['shared_texture_bytes']=stage_textures+512+sum(f['texture_bytes'] for f in fighters)
+        report['shared_pose_bytes']=sum(f['pose_bytes'] for f in fighters)
+        report['fighters']={f['fighter']:dict(pose_bytes=f['pose_bytes'],texture_bytes=f['texture_bytes'],
+                            triangles=f['triangles']) for f in fighters}
+        worst=max(fighters,key=lambda f:f['triangles'])
+        report['polygons_with_stage_reserve']=2*worst['triangles']+stage_poly+projectile_count
+        report['vertices_with_stage_reserve']=2*worst['draw_vertices']+stage_vertices+projectile_count*4
     if args.demo=='versus' and info.get('audio_enabled',True):
         audio=json.loads((ROOT/'build/audio/audio-info.json').read_text())
         report['shared_audio_pcm_bytes']=audio['bytes']
         report['audio_channels']=audio['channel_limit']
-        # Original ROM effects/voices, PCM8 16 kHz. Revisit if more fighters add voices.
-        if audio['bytes']>262144:raise ValueError('Audio bank exceeded 256 KiB')
+        # Mario + Link effects/voices, PCM8 16 kHz (~314 KiB). IMA-ADPCM would halve it.
+        if audio['bytes']>400*1024:raise ValueError('Audio bank exceeded 400 KiB')
     elif args.demo=='versus':
         report['shared_audio_pcm_bytes']=0;report['audio_channels']=0
     if report['shared_texture_bytes']>report['texture_capacity_bytes']: raise ValueError('Texture banks exceeded')

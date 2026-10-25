@@ -111,3 +111,12 @@
   (tick, mask) lists; movement-only TransN (root 2) is drawn only on request
   (viewer ledge clips). Faces, items and Link combat are pending. Not yet seen in emulator/DS.
   See docs/link-prueba16.md.
+- Prueba17 (step 3 of Link): src/fighter.h holds per-fighter data; physics,
+  combat and versus read it (MotionScene.attr, CombatScene.fighter). Attributes
+  are copied FTAttributes (test_fighter_attr.py). convert_fighter.py emits moves,
+  clip map, sounds and throws; for Mario they equal the legacy mario_moves.c and
+  all recorded Mario traces stay byte-identical (check them on every change).
+  The 1v1 links only generic models; legacy Mario remains for old demos via
+  src/fighter_mario_legacy.c. Link: spin attack (ground/air), sword hits and
+  sounds; boomerang/bomb pending (Prueba18). Not yet seen in emulator/DS.
+  See docs/link-prueba17.md.

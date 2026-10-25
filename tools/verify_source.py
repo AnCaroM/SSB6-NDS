@@ -19,7 +19,7 @@ def main():
         selected=args.compiler.resolve(strict=True)
         compiler=[str(selected),'cc'] if selected.stem.lower()=='zig' else [str(selected)]
     env=dict(os.environ,ZIG_GLOBAL_CACHE_DIR=str(ROOT/'.cache/zig'),ZIG_LOCAL_CACHE_DIR=str(ROOT/'.cache/zig-local'))
-    sources=['src/motion.c','src/stage.c','src/motion_scene.c','src/special_hi.c','src/camera.c','src/recovery_demo.c','src/menu.c']
+    sources=['src/motion.c','src/stage.c','src/motion_scene.c','src/special_hi.c','src/camera.c','src/recovery_demo.c','src/menu.c','src/fighter_attr.c']
     tests=['scene','stage','camera','island','recovery','special_hi','menu']
     for name in tests:
         output=build/('test_'+name+('.exe' if os.name=='nt' else ''))

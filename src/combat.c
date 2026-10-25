@@ -8,15 +8,19 @@ static int air(const MotionScene *p) {return p->state==SCENE_AIR;}
 static int ground(const MotionScene *p) {return p->state==SCENE_WAIT || p->state==SCENE_WALK;}
 static int hurt_air(const MotionScene *p)
 {return p->state==SCENE_AIR || p->state==SCENE_SPECIAL_HI || p->state==SCENE_SPECIAL_FALL || p->state==SCENE_CLIFF || p->state==SCENE_CLIMB;}
-static int tornado(MarioMove m) {return m==MOVE_TORNADO || m==MOVE_TORNADO_AIR;}
-static const MoveFrame *at(MarioMove m,unsigned t)
-{const MoveDesc *d=&mario_moves[m];if(t>=d->ticks)t=d->ticks-1;return &mario_move_frames[d->first+t];}
+static int mario(const CombatScene *s) {return s->fighter->kind==FIGHTER_MARIO;}
+static int tornado(const CombatScene *s,MarioMove m) {return mario(s) && (m==MOVE_TORNADO || m==MOVE_TORNADO_AIR);}
+static int up_special(MarioMove m) {return m==MOVE_UP || m==MOVE_UP_AIR;}
+static const MoveFrame *at(const CombatScene *s,MarioMove m,unsigned t)
+{const MoveDesc *d=&s->fighter->moves[m];if(t>=d->ticks)t=d->ticks-1;return &s->fighter->frames[d->first+t];}
 
-float combat_knockback(unsigned p,const MoveHit *h)
+/* ftParamGetCommonKnockback with the defender's FTAttributes weight. */
+float combat_knockback_weight(unsigned p,const MoveHit *h,float weight)
 {
     float n=h->weight?1+h->weight*.5f:(p+h->damage)*.1f+(p+h->damage)*h->damage*.05f;
-    float kb=(n*1.4f+18)*h->scale*.01f+h->base;return kb>2500?2500:kb;
+    float kb=(n*weight*1.4f+18)*h->scale*.01f+h->base;return kb>2500?2500:kb;
 }
+float combat_knockback(unsigned p,const MoveHit *h) {return combat_knockback_weight(p,h,1);}
 float combat_jab_knockback(unsigned p)
 {MoveHit h={0};h.damage=2;h.scale=50;h.base=8;return combat_knockback(p,&h);}
 void combat_init_stage(CombatScene *s,StageId stage)
@@ -24,14 +28,20 @@ void combat_init_stage(CombatScene *s,StageId stage)
     memset(s,0,sizeof *s);scene_init_stage(&s->player,stage);scene_init_stage(&s->target,stage);
     s->player.x=-200;s->target.x=180;s->facing=s->attack_facing=1;s->target.facing=-1;
     s->attack_frame=-1;s->tornado_charge=1;s->tap_age=100;
+    s->fighter=&fighter_mario;
 }
+void combat_set_fighter(CombatScene *s,const Fighter *f)
+{s->fighter=f;s->player.attr=f->attr;s->player.kind=(uint8_t)f->kind;}
 void combat_init(CombatScene *s) {combat_init_stage(s,STAGE_GARDEN);}
 
 int combat_start_move(CombatScene *s,MarioMove m)
 {
     if((unsigned)m>=MOVE_COUNT || s->hitstop)return 0;
-    if(m==MOVE_UP) {
+    if(up_special(m) && mario(s)) {
         if(!scene_special_hi(&s->player,s->player.facing*80))return 0;
+    } else if(m==MOVE_UP_AIR) {
+        /* Link SpecialAirHi: rise, reduced gravity until flag1, then freefall. */
+        if(!scene_special_hi_rise(&s->player,s->fighter->moves[m].ticks))return 0;
     } else if(m==MOVE_LEDGE_START || m==MOVE_LEDGE_SLOW_START) {
         if(s->player.state!=SCENE_CLIFF || s->player.state_ticks<SCENE_CATCH_TICKS)return 0;
     } else if(m==MOVE_LEDGE || m==MOVE_LEDGE_SLOW) {
@@ -44,17 +54,17 @@ int combat_start_move(CombatScene *s,MarioMove m)
     } else if(!ground(&s->player))return 0;
     s->move=m;s->attack_frame=0;s->attack_connected=0;s->connected_strikes=0;
     s->attack_facing=s->player.facing;s->queued_combo=0;s->spawned=0;
-    if(m==MOVE_DASH)s->player.vx=s->attack_facing*44;
-    if(tornado(m)) {
+    if(m==MOVE_DASH)s->player.vx=s->attack_facing*s->fighter->attr->run_speed;
+    if(tornado(s,m)) {
         s->player.vx=motion_ground_clamp(s->player.vx,17);
         if(air(&s->player))s->player.vy=-7;
     }
     return 1;
 }
 unsigned combat_player_clip(const CombatScene *s)
-{return s->attack_frame<0?0:mario_moves[s->move].clip;}
+{return s->attack_frame<0?0:s->fighter->moves[s->move].clip;}
 int combat_attack_active(const CombatScene *s)
-{return s->attack_frame>=0 && at(s->move,(unsigned)s->attack_frame)->count>0;}
+{return s->attack_frame>=0 && at(s,s->move,(unsigned)s->attack_frame)->count>0;}
 
 static int overlap(const MotionScene *p,float x,float y,float radius)
 {
@@ -63,7 +73,7 @@ static int overlap(const MotionScene *p,float x,float y,float radius)
 }
 static void damage(CombatScene *s,const MoveHit *h,int dir,float impact_y)
 {
-    float kb=combat_knockback(s->percent,h),cs=h->cos_angle/4096.0f,sn=h->sin_angle/4096.0f;
+    float kb=combat_knockback_weight(s->percent,h,s->target.attr->weight),cs=h->cos_angle/4096.0f,sn=h->sin_angle/4096.0f;
     int airborne=hurt_air(&s->target);
     /* US ftCommonDamageGetKnockbackAngle: 43 air / 0..42.5 ground.
      * Half-degree lookup bounds angle error to .25 degrees, no runtime trig. */
@@ -95,8 +105,8 @@ static void damage(CombatScene *s,const MoveHit *h,int dir,float impact_y)
 }
 static void release_throw(CombatScene *s)
 {
-    MoveHit h={0};h.damage=s->move==MOVE_THROW_B?16:12;h.angle=45;h.scale=70;
-    h.base=s->move==MOVE_THROW_B?70:80;h.cos_angle=h.sin_angle=2896;
+    /* FTThrowHitDesc of the fighter's ThrowF/ThrowB script. */
+    MoveHit h=s->fighter->throws[s->move==MOVE_THROW_B];
     int dir=s->attack_facing*(s->move==MOVE_THROW_B?-1:1);
     s->target.x=s->player.x+dir*220;s->captured=0;damage(s,&h,dir,s->target.y+180);
 }
@@ -178,20 +188,20 @@ void combat_update(CombatScene *s,CombatInput in)
     if(dir)s->brake_ticks=0;
     if(s->dash_ticks)++s->run_age;
     if(s->player.state==SCENE_SPECIAL_HI && s->attack_frame<0) {
-        s->move=MOVE_UP;s->attack_frame=(int)s->player.state_ticks;
+        s->move=mario(s)?MOVE_UP:MOVE_UP_AIR;s->attack_frame=(int)s->player.state_ticks;
         s->attack_facing=s->player.facing;s->connected_strikes=0;s->spawned=0;
     }
     if(s->attack_frame>=0) {
         if(s->queued_combo && ((s->move==MOVE_JAB1 && s->attack_frame>=10) ||
             (s->move==MOVE_JAB2 && s->attack_frame>=8)))
             combat_start_move(s,s->move==MOVE_JAB1?MOVE_JAB2:MOVE_JAB3);
-        else if(++s->attack_frame>=mario_moves[s->move].ticks) {
+        else if(++s->attack_frame>=s->fighter->moves[s->move].ticks) {
             MarioMove old=s->move;s->attack_frame=-1;
             if(old==MOVE_LEDGE_START || old==MOVE_LEDGE_SLOW_START)
                 combat_start_move(s,old==MOVE_LEDGE_START?MOVE_LEDGE:MOVE_LEDGE_SLOW);
             else if(old==MOVE_GRAB && s->captured)combat_start_move(s,MOVE_GRAB_HOLD);
-            else if(old==MOVE_GRAB_HOLD && s->captured)s->attack_frame=mario_moves[old].ticks-1;
-            if(tornado(old) && air(&s->player))s->tornado_charge=0;
+            else if(old==MOVE_GRAB_HOLD && s->captured)s->attack_frame=s->fighter->moves[old].ticks-1;
+            if(tornado(s,old) && air(&s->player))s->tornado_charge=0;
         }
     }
     if(s->captured && s->move==MOVE_GRAB_HOLD) {
@@ -201,7 +211,13 @@ void combat_update(CombatScene *s,CombatInput in)
         else if(s->capture_age>90) {s->captured=0;s->attack_frame=-1;s->target.state=SCENE_AIR;}
     }
     if(s->attack_frame<0) {
-        if(special) {
+        if(special && !mario(s)) {
+            /* Link: spin attack only; boomerang and bomb arrive with Prueba18. */
+            if(in.up) {
+                if(dir)s->player.facing=dir;
+                combat_start_move(s,air(&s->player)?MOVE_UP_AIR:MOVE_UP);
+            }
+        } else if(special) {
             MarioMove m=in.up?MOVE_UP:in.down?(air(&s->player)?MOVE_TORNADO_AIR:MOVE_TORNADO):
                 (air(&s->player)?MOVE_FIRE_AIR:MOVE_FIRE);
             if(dir && m!=MOVE_UP)s->player.facing=dir;
@@ -216,12 +232,12 @@ void combat_update(CombatScene *s,CombatInput in)
             combat_start_move(s,m);
         } else if(grab && !in.smash)combat_start_move(s,MOVE_GRAB);
     }
-    const MoveFrame *f=s->attack_frame>=0?at(s->move,(unsigned)s->attack_frame):0;
+    const MoveFrame *f=s->attack_frame>=0?at(s,s->move,(unsigned)s->attack_frame):0;
     unsigned old_respawns=s->player.respawns,old_landings=s->player.landings,old_grabs=s->player.cliff_grabs;
     SceneInput motion=in.motion;
     if(f) {
         motion.jump_held=0;if(!air(&s->player))motion.stick_x=0;
-        if(tornado(s->move)) {
+        if(tornado(s,s->move)) {
             if(special && s->tornado_charge && (f->flags&8)) {
                 s->player.vy+=22;if(s->player.vy>40)s->player.vy=40;
                 s->player.state=SCENE_AIR;s->player.platform=-1;s->player.jumps_used=1;
@@ -233,7 +249,7 @@ void combat_update(CombatScene *s,CombatInput in)
         if(s->move==MOVE_GRAB_HOLD || s->move==MOVE_THROW_F || s->move==MOVE_THROW_B)s->player.vx=0;
     } else if(s->dash_ticks && dir && ground(&s->player)) {
         /* Bypass the walking clamp: scene_step otherwise replaces 44 with 24. */
-        s->player.vx=dir*50;motion.stick_x=0;s->player.facing=dir;
+        s->player.vx=dir*s->fighter->attr->dash_velocity;motion.stick_x=0;s->player.facing=dir;
     }
     /* Preserve aerial facing while steering; back-air remains reachable when
      * the direction is pressed before X, rather than only on the same tick. */
@@ -247,7 +263,7 @@ void combat_update(CombatScene *s,CombatInput in)
     if(s->player.landings!=old_landings || s->player.cliff_grabs!=old_grabs) {
         s->tornado_charge=1;
         if(s->attack_frame>=0 && (s->player.cliff_grabs!=old_grabs ||
-           (s->move>=MOVE_NAIR && s->move<=MOVE_DAIR) || s->move==MOVE_UP)) {
+           (s->move>=MOVE_NAIR && s->move<=MOVE_DAIR) || (up_special(s->move) && s->player.landings!=old_landings))) {
             s->attack_frame=-1;f=0;
         }
     }
@@ -272,17 +288,17 @@ void combat_update(CombatScene *s,CombatInput in)
 }
 void combat_resolve(CombatScene *s)
 {
-    const MoveFrame *f=s->attack_frame>=0?at(s->move,(unsigned)s->attack_frame):0;
+    const MoveFrame *f=s->attack_frame>=0?at(s,s->move,(unsigned)s->attack_frame):0;
     if(s->captured && f) {
         s->target.x=s->player.x+s->attack_facing*f->grab_x;
         s->target.y=s->player.y+f->grab_y-180;
         s->target.vx=s->target.vy=0;
     }
     if(f) {
-        if((s->move==MOVE_FIRE || s->move==MOVE_FIRE_AIR) && !s->spawned && (f->flags&1)) {spawn(s,f);s->spawned=1;}
+        if(mario(s) && (s->move==MOVE_FIRE || s->move==MOVE_FIRE_AIR) && !s->spawned && (f->flags&1)) {spawn(s,f);s->spawned=1;}
         if((s->move==MOVE_THROW_F || s->move==MOVE_THROW_B) && s->captured && (f->flags&4))release_throw(s);
         for(unsigned i=0;i<f->count && !s->captured && !s->target_immune;++i) {
-            const MoveHit *h=&mario_move_hits[f->first+i];uint64_t bit=UINT64_C(1)<<h->strike;
+            const MoveHit *h=&s->fighter->hits[f->first+i];uint64_t bit=UINT64_C(1)<<h->strike;
             if(s->connected_strikes&bit)continue;
             if(!(h->ground_air&(hurt_air(&s->target)?1:2)))continue;
             if(overlap(&s->target,s->player.x+h->x*s->attack_facing,s->player.y+h->y,h->radius)) {
@@ -314,12 +330,12 @@ void combat_demo_begin(CombatScene *s,unsigned index)
         s->player.x=-2498;s->player.y=-300;s->player.state=SCENE_CLIFF;
         s->player.cliff_side=-1;s->player.facing=1;s->player.state_ticks=20;s->target.x=-2100;
     }
-    const MoveDesc *d=&mario_moves[m];
+    const MoveDesc *d=&s->fighter->moves[m];
     if(m==MOVE_FIRE)s->target.x=1400;
     for(unsigned t=0;t<d->ticks;++t) {
-        const MoveFrame *f=at(m,t);
+        const MoveFrame *f=at(s,m,t);
         if(f->count) {
-            const MoveHit *h=&mario_move_hits[f->first];s->target.x=s->player.x+h->x;
+            const MoveHit *h=&s->fighter->hits[f->first];s->target.x=s->player.x+h->x;
             s->target.y=s->player.y+h->y-180;if(s->target.y<0)s->target.y=0;break;
         }
     }

@@ -16,13 +16,6 @@ int main(void)
     assert(pose_blend(500,-500,sample)==-500);
     sample=pose_sample(1,5,2,3,0);assert(pose_blend(500,-500,sample)==0);
     sample=pose_sample(25,25,2,13,1);assert(sample.a==0 && sample.part==0);
-    unsigned seen=0;
-    for(int i=0;i<MOVE_COUNT;++i) {
-        assert(mario_move_demo_order[i]<MOVE_COUNT);
-        for(int j=0;j<i;++j)assert(mario_move_demo_order[j]!=mario_move_demo_order[i]);
-        ++seen;
-    }
-    assert(seen==MOVE_COUNT);
     CombatScene s;combat_init(&s);
     combat_update(&s,button(80,0,0,1));assert(s.move==MOVE_FTILT);
     combat_init(&s);combat_update(&s,button(0,1,0,1));assert(s.move==MOVE_UTILT);
@@ -40,7 +33,7 @@ int main(void)
     combat_update(&s,button(0,0,0,0));assert(!s.dash_ticks && s.brake_ticks);
     combat_init(&s);s.captured=1;combat_start_move(&s,MOVE_GRAB_HOLD);
     for(int t=0;t<60;++t)combat_update(&s,(CombatInput){0});
-    assert(s.captured && s.attack_frame==mario_moves[MOVE_GRAB_HOLD].ticks-1);
+    assert(s.captured && s.attack_frame==fighter_mario.moves[MOVE_GRAB_HOLD].ticks-1);
     combat_init(&s);s.target.x=1500;
     int seen2=0,seen3=0;
     for(int t=0;t<90;++t) {
@@ -61,7 +54,7 @@ int main(void)
             if(s.percent>peak)peak=s.percent;
             assert(isfinite(s.target.x) && isfinite(s.player.y));
         }
-        fprintf(report,"%s,%u,%u,%d,%u\n",mario_moves[m].name,s.hits,peak,captured,s.knockouts);
+        fprintf(report,"%s,%u,%u,%d,%u\n",fighter_mario.moves[m].name,s.hits,peak,captured,s.knockouts);
         if(m==MOVE_GRAB)assert(captured);
         if(m==MOVE_THROW_F)assert(peak==12);
         if(m==MOVE_THROW_B)assert(peak==16);

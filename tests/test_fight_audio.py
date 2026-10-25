@@ -49,6 +49,6 @@ class FightAudioTests(unittest.TestCase):
             self.assertLessEqual(sample['bytes'],limit*data['rate']+4)
             self.assertLessEqual(sample['volume'],127);self.assertEqual(sample['priority'],priority)
             self.assertTrue(sample['layers'])
-        self.assertLessEqual(data['bytes'],262144)
+        self.assertLessEqual(data['bytes'],400*1024)
         self.assertIn('not distributable',data['provenance'])
 if __name__=='__main__':unittest.main()

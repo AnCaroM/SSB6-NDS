@@ -2,6 +2,7 @@
 #define SSB_COMBAT_H
 #include "motion_scene.h"
 #include "moves.h"
+#include "fighter.h"
 typedef struct { SceneInput motion; int attack,special,grab,smash,up,down,variant,drop; } CombatInput;
 typedef struct { float x,y,vx,vy; unsigned life; int facing; } Fireball;
 
@@ -21,10 +22,13 @@ typedef struct {
     uint64_t connected_strikes;
     Fireball fireballs[4];
     int duel_mode,target_immune;
+    const Fighter *fighter;   /* moves, attributes and sounds of the attacker */
 } CombatScene;
 
 void combat_init(CombatScene *scene);
 void combat_init_stage(CombatScene *scene, StageId stage);
+/* Choose the character (default Mario); resets nothing else. */
+void combat_set_fighter(CombatScene *scene,const Fighter *fighter);
 void combat_step(CombatScene *scene, SceneInput input, int attack_held, int drop);
 float combat_jab_knockback(unsigned percent_before);
 int combat_attack_active(const CombatScene *scene);
@@ -32,6 +36,7 @@ void combat_update(CombatScene *scene,CombatInput input);
 int combat_start_move(CombatScene *scene,MarioMove move);
 unsigned combat_player_clip(const CombatScene *scene);
 float combat_knockback(unsigned percent,const MoveHit *hit);
+float combat_knockback_weight(unsigned percent,const MoveHit *hit,float weight);
 void combat_demo_begin(CombatScene *scene,unsigned index);
 /* In duel mode both controllers/physics run before either contact pass. */
 void combat_resolve(CombatScene *scene);
