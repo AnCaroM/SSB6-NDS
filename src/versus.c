@@ -4,7 +4,7 @@
 #include <string.h>
 
 static int grounded(const MotionScene *p)
-{return p->state==SCENE_WAIT || p->state==SCENE_WALK;}
+{return p->state==SCENE_WAIT || p->state==SCENE_WALK || p->state==SCENE_SQUAT;}
 static void sound_event(Versus *v,FightSound sound,unsigned fighter)
 {if(v->sound_count<8)v->sounds[v->sound_count++]=(FightSoundEvent){sound,fighter};}
 /* Sounds authored on the current tick of the move's original motion script. */

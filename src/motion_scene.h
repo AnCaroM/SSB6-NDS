@@ -8,7 +8,7 @@
 /* Experimental scene: numeric primitives come from the decomp; the scene
  * scheduler, floor and reduced state machine are provisional integration. */
 typedef enum { SCENE_WAIT, SCENE_WALK, SCENE_KNEE, SCENE_AIR, SCENE_LAND,
-               SCENE_CLIFF, SCENE_CLIMB, SCENE_SPECIAL_HI, SCENE_SPECIAL_FALL } SceneState;
+               SCENE_CLIFF, SCENE_CLIMB, SCENE_SPECIAL_HI, SCENE_SPECIAL_FALL, SCENE_SQUAT } SceneState;
 typedef struct { int stick_x; int jump_held; } SceneInput;
 typedef struct {
     uint32_t tick;
@@ -31,6 +31,7 @@ typedef struct {
     const FighterAttributes *attr; /* physics numbers of this fighter */
     uint8_t kind;                  /* FighterKind: selects the up-special physics */
     unsigned special_ticks;        /* length of a non-Mario aerial up-special */
+    int squat_held;                /* down held this tick (set by the caller): Squat */
 } MotionScene;
 
 void scene_init(MotionScene *scene);

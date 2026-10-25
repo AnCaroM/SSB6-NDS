@@ -5,7 +5,7 @@
 #include <string.h>
 #include "damage_angles.h"
 static int air(const MotionScene *p) {return p->state==SCENE_AIR;}
-static int ground(const MotionScene *p) {return p->state==SCENE_WAIT || p->state==SCENE_WALK;}
+static int ground(const MotionScene *p) {return p->state==SCENE_WAIT || p->state==SCENE_WALK || p->state==SCENE_SQUAT;}
 static int hurt_air(const MotionScene *p)
 {return p->state==SCENE_AIR || p->state==SCENE_SPECIAL_HI || p->state==SCENE_SPECIAL_FALL || p->state==SCENE_CLIFF || p->state==SCENE_CLIMB;}
 static int mario(const CombatScene *s) {return s->fighter->kind==FIGHTER_MARIO;}
@@ -255,6 +255,7 @@ void combat_update(CombatScene *s,CombatInput in)
      * the direction is pressed before X, rather than only on the same tick. */
     int previous_facing=s->player.facing;
     if(in.drop && !f)scene_drop_through(&s->player);
+    s->player.squat_held=in.down && !f;
     scene_step(&s->player,motion);
     if(air(&s->player))s->player.facing=previous_facing;
     if(f)s->player.facing=s->attack_facing;

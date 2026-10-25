@@ -70,7 +70,7 @@ void scene_drop_through(MotionScene *s)
 {
     if(s->state==SCENE_LAND && s->landing_ticks==25)return;
     if(s->state==SCENE_CLIFF) {cliff_drop(s);return;}
-    if ((s->state==SCENE_WAIT || s->state==SCENE_WALK || s->state==SCENE_LAND) && s->platform > 0) {
+    if ((s->state==SCENE_WAIT || s->state==SCENE_WALK || s->state==SCENE_LAND || s->state==SCENE_SQUAT) && s->platform > 0) {
         s->ignored_platform = s->platform;
         s->drop_ticks = 12;
         s->platform = -1;
@@ -82,7 +82,7 @@ void scene_drop_through(MotionScene *s)
 
 const char *scene_state_name(SceneState state)
 {
-    static const char *names[] = {"WAIT", "WALK", "KNEE", "AIR", "LAND", "CLIFF", "CLIMB", "UP-B", "FREEFALL"};
+    static const char *names[] = {"WAIT", "WALK", "KNEE", "AIR", "LAND", "CLIFF", "CLIMB", "UP-B", "FREEFALL", "SQUAT"};
     return (unsigned)state < sizeof names / sizeof *names ? names[state] : "INVALID";
 }
 
@@ -117,12 +117,20 @@ void scene_step(MotionScene *s, SceneInput input)
         if(t>=12) {s->platform=0;s->vx=s->vy=0;s->jumps_used=0;s->air_jump=0;s->special_used=0;s->landing_ticks=3;enter(s,SCENE_LAND);}
         return;
     }
-    if(s->state!=SCENE_AIR && s->state!=SCENE_SPECIAL_HI && s->state!=SCENE_SPECIAL_FALL && (input.stick_x>=8 || input.stick_x<=-8))
+    if(s->state!=SCENE_AIR && s->state!=SCENE_SPECIAL_HI && s->state!=SCENE_SPECIAL_FALL && s->state!=SCENE_SQUAT &&
+       (input.stick_x>=8 || input.stick_x<=-8))
         s->facing=input.stick_x>0?1:-1;
 
     switch (s->state) {
+    case SCENE_SQUAT:
+        /* Squat/SquatWait while down is held; jump or release leaves it. */
+        ++s->state_ticks;
+        if(pressed) {s->short_hop=0;enter(s,SCENE_KNEE);}
+        else if(!s->squat_held)enter(s,SCENE_WAIT);
+        break;
     case SCENE_WAIT:
     case SCENE_WALK:
+        if(s->squat_held && !pressed) {enter(s,SCENE_SQUAT);break;}
         if (pressed) {
             s->short_hop = 0;
             enter(s, SCENE_KNEE);
@@ -197,7 +205,7 @@ void scene_step(MotionScene *s, SceneInput input)
     }
 
     /* Ground friction: default material 4 x traction (ftPhysicsApplyGroundVelFriction). */
-    if (s->state == SCENE_KNEE || s->state == SCENE_LAND)
+    if (s->state == SCENE_KNEE || s->state == SCENE_LAND || s->state == SCENE_SQUAT)
         s->vx = motion_ground_friction(s->vx, a->traction*4);
     if (s->state == SCENE_AIR) {
         s->vy = motion_gravity(s->vy, a->gravity, a->tvel_base);
