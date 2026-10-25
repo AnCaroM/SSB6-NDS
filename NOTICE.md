@@ -33,7 +33,22 @@ No deben adjuntarse automáticamente a GitHub Releases o artefactos de CI.
 
 ## Licencia del repositorio
 
-Todavía no se ha declarado una licencia global para este proyecto. Este aviso
-documenta procedencia; no cambia las licencias de dependencias ni concede
-derechos sobre material de terceros. No se aplica una licencia MIT general a
-las partes adaptadas de otras fuentes.
+El código propio de este proyecto (`src/`, `platform/`, `tools/`, `tests/`),
+su documentación y sus scripts se publican bajo la [licencia MIT](LICENSE).
+Las contribuciones aceptadas se incorporan bajo la misma licencia.
+
+La licencia MIT no se extiende a:
+
+- La ROM, ni a modelos, texturas, animaciones, sonidos u otros datos extraídos
+  de ella, ni a las compilaciones `.nds` que los incorporan.
+- Las partes adaptadas de ssb-decomp-re (funciones numéricas, tablas y valores
+  copiados, identificados en los comentarios). Esa referencia no declara
+  licencia en la revisión fijada, así que esas partes no reciben derechos
+  adicionales por estar aquí.
+- Las dependencias y herramientas externas (devkitPro, Torch, BattleShip),
+  que conservan sus propias licencias.
+
+Este aviso documenta procedencia; no concede derechos sobre material de
+terceros. Super Smash Bros., Mario, Link y Nintendo DS son marcas de sus
+respectivos titulares. Este es un proyecto de aficionados, sin relación con
+Nintendo ni HAL Laboratory.
