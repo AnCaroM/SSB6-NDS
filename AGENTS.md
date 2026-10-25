@@ -107,6 +107,7 @@
   joints each animation table lists). It reproduces Mario's Prueba15 bone bank
   exactly. Link: tree @0x3AE8, 32 joints, 19 matrix slots, 72 clips, 248176
   pose bytes, 49920 texture bytes, shown in a menu viewer via
-  platform/nds/fighter_render.c. Default parts only (sword/shield in hand);
-  part swaps, faces and Link combat are pending. Not yet seen in emulator/DS.
+  platform/nds/fighter_render.c. Model-part swaps from motion scripts are per-clip
+  (tick, mask) lists; movement-only TransN (root 2) is drawn only on request
+  (viewer ledge clips). Faces, items and Link combat are pending. Not yet seen in emulator/DS.
   See docs/link-prueba16.md.

@@ -7,8 +7,11 @@
 typedef struct { uint16_t color; int16_t u,v; } FighterVertex;
 typedef struct { const uint16_t *pixels; uint16_t width,height; uint32_t param; } FighterTexture;
 typedef struct { int16_t x,y,z,slot; } FighterLocalVertex; /* slot: matrix-stack slot of its joint */
-typedef struct { const int16_t *frames; const uint16_t *channels; const int16_t *base;
-                 uint16_t ticks,stored,varying,loop; } FighterClip;
+/* parts: (tick, visible-part mask) pairs from the motion script's model-part
+ * commands; NULL keeps the model's base mask. root: 0 no inserted joint,
+ * 1 drawn TransN/XRotN, 2 TransN the game applies as movement. */
+typedef struct { const int16_t *frames; const uint16_t *channels; const int16_t *base; const uint32_t *parts;
+                 uint16_t ticks,stored,varying,loop,part_changes,root; } FighterClip;
 /* Joint evaluation order: restore = matrix-stack slot of the parent (-1: keep
  * the current matrix, i.e. parent was evaluated just before), store = slot to
  * keep this joint for children/vertices (-1: not needed), skip = no geometry
@@ -22,6 +25,8 @@ typedef struct {
     const uint16_t *local_map; const FighterLocalVertex *locals;
     const FighterClip *clips; unsigned clip_count;
     const FighterJoint *joints; const int8_t *parents; unsigned joint_count,slot_count;
-    int32_t scale,offset[3]; /* 4.12: model/64 units -> GL units (1/1024 world) */
+    int32_t scale,offset[3]; /* 4.12: skeleton units (model/divisor) -> GL units (1/1024 world) */
+    const uint8_t *triangle_parts; uint32_t base_parts; /* part bit per triangle, 255 = always */
+    int32_t translate; /* channel translation (model units*8) -> f32 skeleton units */
 } FighterModel;
 #endif

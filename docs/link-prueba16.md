@@ -46,21 +46,41 @@ los canales del banco de Prueba15 en 62 clips comunes; error máximo de Link
 confirma que el plan con ranuras da las mismas matrices que la jerarquía
 completa en las 2488 poses de Link.
 
+## Partes del modelo y bordes (revisión tras la primera prueba)
+
+- **Partes que cambian durante la animación.** Los comandos
+  `SetModelPartID`/`ResetModelPartAll`/`HideModelPartAll` de los guiones
+  originales (`224_LinkMainMotion.c`, `WaitAsync` absoluto, saltos y
+  subrutinas) se convierten en una lista (tic, máscara) por clip. Partes de
+  Link: espada en mano, boomerang en mano (archivo `LinkBoomerangModel`),
+  gancho (3 piezas), escudo en mano, vaina con espada, escudo a la espalda.
+  Ejemplos: bomba en el aire guarda el escudo en la espalda en el tic 28;
+  el boomerang cambia la espada por la vaina y el boomerang en 9/10/26/38.
+- **Movimiento de TransN.** El hueso insertado TransN se guarda siempre. En
+  los clips donde el juego lo usa como desplazamiento (subir del borde,
+  ataque en carrera) sólo se dibuja si se pide (`FIGHTER_DRAW_ROOT_MOTION`);
+  el visor lo usa en los clips de borde y los muestra colgando del borde
+  derecho de Dream Land, mirando al escenario.
+- Herramientas de revisión sin DS: `tools/render_fighter.py` (hojas de
+  contacto) y `tools/raster_fighter.py` (rasterizado 256×192 con texturas,
+  profundidad, partes y alfa de 1 bit a partir de los datos generados).
+
 ## Coste
 
 | | Prueba15 | Prueba16 |
 |---|---|---|
-| ARM9 estático | 823.276 B | 1.143.300 B |
-| Texturas (A+B) | 166.144 B | 216.064 B de 262.144 |
-| Huesos de Link | — | 248.176 B |
+| ARM9 estático | 823.276 B | 1.166.056 B |
+| Texturas (A+B) | 166.144 B | 235.520 B de 262.144 |
+| Huesos de Link | — | 248.664 B |
 
-Link: 32 articulaciones, 338 triángulos, 25 texturas (49.920 B).
+Link: 32 articulaciones (24 ranuras de matriz), 371 triángulos con partes,
+texturas 69.376 B. El gancho obliga a usar unidades de modelo/128 (error
+máximo 0,68 unidades).
 
 ## Pendiente (no en esta entrega)
 
-- Cambios de partes durante animaciones (boomerang en la mano, escudo a la
-  espalda en bomba/abajo aéreo/agarre, gancho, vaina al aparecer) y caras
-  (parpadeo, daño). Se ven con la apariencia por defecto.
+- Caras (parpadeo, daño), estela de la espada, la bomba como objeto y el
+  boomerang/gancho lanzados (son objetos, no partes del modelo).
 - Combate de Link: hitboxes de espada, atributos, boomerang, bomba, ataque
   giratorio, sonidos y voces.
 - Selección de personaje.

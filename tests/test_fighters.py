@@ -41,6 +41,8 @@ class FighterTests(unittest.TestCase):
         compared=0
         for clip in json.loads(new_info.read_text())['clips']:
             if 'same' in clip or clip['file'] not in ids:continue
-            np.testing.assert_array_equal(new[clip['index']],old[ids[clip['file']]],clip['motion']);compared+=1
+            a,b=new[clip['index']],old[ids[clip['file']]]
+            if clip['root']==2:a,b=a[:,:-9],b[:,:-9]  # movement TransN kept only by the generic bank
+            np.testing.assert_array_equal(a,b,clip['motion']);compared+=1
         self.assertGreater(compared,50)
 if __name__=='__main__':unittest.main()
