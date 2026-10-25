@@ -1,8 +1,18 @@
 # SSB NDS
 
 Port nativo experimental de Super Smash Bros. 64 para **Nintendo DS original y
-DS Lite**. El estado actual permite Mario contra una CPU sencilla en Dream Land,
-con tres vidas, ataques, agarres, proyectiles y recuperación.
+DS Lite**. El estado actual permite elegir Mario o Link contra una CPU sencilla
+en Dream Land, con tres vidas, ataques, agarres, proyectiles y recuperación.
+
+Proyecto de código abierto bajo la [licencia MIT](LICENSE) (ver el alcance en
+[NOTICE.md](NOTICE.md)). Las contribuciones son bienvenidas: ver
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+> **English:** experimental native port of Super Smash Bros. 64 to the original
+> Nintendo DS / DS Lite (Mario or Link vs. CPU on Dream Land). No ROM or game
+> asset is included: each user converts them locally from their own US v1.0
+> ROM. Source code is MIT-licensed; docs and comments are mostly in Spanish,
+> but issues and pull requests in English are welcome.
 
 El proyecto estudia y adapta partes de una decompilación de referencia. Todavía
 no reproduce el motor completo del juego. La CPU es propia y provisional.
@@ -93,6 +103,27 @@ Resultado: `build/nds/ssb-versus.nds`. Se puede abrir en melonDS o copiar a una
 microSD compatible con DSPico. No hace falta copiar la ROM N64 a la DS.
 `--compact-poses` o ninguna opción usan los bancos de vértices anteriores (comparación).
 
+## Compilar en macOS o Linux
+
+Se ha compilado en macOS con los mismos pasos. Diferencias:
+
+- Instalar devkitPro con su instalador de `pacman` y el grupo `nds-dev`
+  (queda en `/opt/devkitpro`).
+- Zig no es necesario: si falta `.tools/zig`, las herramientas usan el
+  compilador del sistema (`cc`, `clang` o `gcc`).
+- Los archivos `Abrir … .cmd` son sólo para Windows; en otros sistemas se abre
+  `build/nds/ssb-versus.nds` directamente en melonDS.
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python tools/setup_sources.py
+python tools/prepare_rom.py ~/ROMs/mi-copia.z64
+python tools/extract_initial_assets.py
+python tools/build_nds.py --devkitpro /opt/devkitpro --demo versus --skeletal-poses
+```
+
 ## Controles
 
 | Entrada | Acción |
@@ -102,7 +133,8 @@ microSD compatible con DSPico. No hace falta copiar la ROM N64 a la DS.
 | X + dirección | Ataques en suelo o aire |
 | Y + X + dirección | Smash |
 | L, después X o dirección | Agarre y lanzamiento |
-| B / arriba+B / abajo+B | Fuego / recuperación / Tornado |
+| Abajo (en suelo) | Agacharse |
+| B / arriba+B / abajo+B | Mario: fuego / recuperación / Tornado; Link: bumerán / giro / bomba |
 | R | Cámara automática / mapa |
 | START | Pausa |
 | SELECT | Alternar jugador contra CPU y CPU contra CPU; reinicia |
@@ -158,4 +190,9 @@ python tools/check_publication.py
 
 No añadir ROMs, modelos/texturas/animaciones extraídos, ejecutables, SDKs,
 checkouts externos, credenciales ni compilaciones del juego a Git o Releases.
-Este repositorio todavía no declara una licencia global; ver [NOTICE.md](NOTICE.md).
+
+## Licencia
+
+El código propio se publica bajo la [licencia MIT](LICENSE). No cubre la ROM,
+los recursos extraídos de ella ni las partes adaptadas de otras fuentes; ver
+[NOTICE.md](NOTICE.md).
