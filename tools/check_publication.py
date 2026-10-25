@@ -34,7 +34,7 @@ def main():
         if len(data)>1024*1024:errors.append('Unexpected file over 1 MiB: '+name)
         text=data.decode('utf-8',errors='replace')
         if token.search(text):errors.append('Potential credential: '+name)
-        if re.search(r'[A-Za-z]:[/\\]Users[/\\][^/\\\s]+',text):errors.append('Personal absolute user path: '+name)
+        if re.search(r'[A-Za-z]:[/\\]Users[/\\][^/\\\s]+|/(?:Users|home)/[A-Za-z0-9._-]+/',text):errors.append('Personal absolute user path: '+name)
     if not count:raise SystemExit('No indexed files. Stage the intended public sources first.')
     if errors:raise SystemExit('\n'.join(errors))
     print(f'PASS: {count} indexed text files, {total:,} bytes; no blocked artifacts or recognized secrets.')
