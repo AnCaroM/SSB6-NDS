@@ -120,3 +120,9 @@
   src/fighter_mario_legacy.c. Link: spin attack (ground/air), sword hits and
   sounds; boomerang/bomb pending (Prueba18). Not yet seen in emulator/DS.
   See docs/link-prueba17.md.
+- Prueba18: crouch (SCENE_SQUAT, MotionScene.squat_held set by combat) for both
+  fighters; Link boomerang (spawn flag0 tick26, decay/return/homing by fixed-angle
+  rotation, catch, 9/8 dmg) and bomb item (pull tick29, held, LightThrow table x.6,
+  release tick8, fuse 300, contact/explosion) in combat.c, reduced: no self-damage,
+  pickup, reflection or map collision for the boomerang; provisional bomb drawing.
+  Mario traces stay byte-identical. See docs/link-prueba18.md.

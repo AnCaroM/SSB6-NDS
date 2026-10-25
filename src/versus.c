@@ -138,7 +138,13 @@ void versus_step(Versus *v,const CombatInput input[2])
      * result is committed. This permits trades without player-order bias. */
     for(unsigned i=0;i<2;++i)target_snapshot(v,i);
     for(unsigned i=0;i<2;++i) {
-        combat_resolve(&v->fighter[i]);
+        CombatScene *f=&v->fighter[i];int returning=f->boomerang.returning,bomb=f->bomb.state;
+        f->boomerang.caught=0;
+        combat_resolve(f);
+        /* Weapon/item events: boomerang turn and catch, bomb explosion. */
+        if(f->boomerang.active && f->boomerang.returning && !returning)sound_event(v,SOUND_BOOMERANG_RETURN,i);
+        if(f->boomerang.caught)sound_event(v,SOUND_BOOMERANG_CATCH,i);
+        if(f->bomb.state==BOMB_EXPLODING && bomb!=BOMB_EXPLODING)sound_event(v,SOUND_EXPLODE_L,i);
     }
     if(v->fighter[0].captured && v->fighter[1].captured)
         v->fighter[(v->tick&1)?0:1].captured=0;

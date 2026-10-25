@@ -19,7 +19,8 @@ typedef enum { FIGHTER_MARIO, FIGHTER_LINK, FIGHTER_KIND_COUNT } FighterKind;
 /* Clip ids for the reduced scene states (indices into the fighter's clips). */
 typedef struct {
     uint16_t wait,walk,jump,fall,land,cliff_wait,cliff_catch,jump_aerial_f,jump_aerial_b;
-    uint16_t special_fall,dash,run,brake,capture,damage_fall,squat,squat_wait,squat_rv,damage[17];
+    uint16_t special_fall,dash,run,brake,capture,damage_fall,squat,squat_wait,squat_rv;
+    uint16_t item_throw,item_throw_air,damage[17];
 } FighterClipMap;
 /* FightSound ids: script-independent voices and effects (FTAttributes). */
 typedef struct { uint8_t jump,jump_air,land,damage,dead,dead_slam,smash[3]; } FighterSounds;

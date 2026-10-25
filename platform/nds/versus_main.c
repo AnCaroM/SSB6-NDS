@@ -77,6 +77,45 @@ static void actor(const Fighter *f,const MotionScene *s,int facing,unsigned clip
     glPopMatrix(1);
 }
 
+/* Link's thrown boomerang: the in-hand boomerang part, spinning in the view plane. */
+static void draw_boomerang(const Boomerang *b)
+{
+    glPushMatrix();glTranslatef32(floattof32(b->x/WORLD_UNIT),floattof32(b->y/WORLD_UNIT),floattof32(.2f));
+    glRotateZi((int)(b->age*3600)&32767);glRotateYi(8192);
+    fighter_render_draw_part(&renders[1],LINK_PART_11_1,0x7fff);
+    glPopMatrix(1);
+}
+
+/* Unit circle (24 segments), tabulated once at start-up by emblem_init(). */
+static v16 ring[EMBLEM_SEGMENTS+1][2];
+
+/* Bomb: provisional untextured stand-in (navy body, fuse spark), bloating in
+ * the last 96 fuse ticks with the original 1.0..1.8 scale cycle. */
+static void draw_bomb(const Bomb *m)
+{
+    static const int bloat[11]={4096,4915,5734,6554,7373,6554,5734,4915,4096,3277,3277};
+    glPushMatrix();glTranslatef32(floattof32(m->x/WORLD_UNIT),floattof32(m->y/WORLD_UNIT),floattof32(.3f));
+    glBindTexture(0,0);
+    if(m->state==BOMB_EXPLODING) {
+        float radius=(m->age<2?300:m->age<4?230:150)/WORLD_UNIT;
+        glScalef32(floattof32(radius),floattof32(radius),inttof32(1));
+        glPolyFmt(POLY_ALPHA(16)|POLY_CULL_NONE|POLY_ID(58));glColor(RGB15(31,22,6));
+    } else {
+        int k=m->life<96?bloat[(96-m->life)/4%11]:4096;
+        glScalef32(floattof32(70.0f/WORLD_UNIT)*k/4096,floattof32(70.0f/WORLD_UNIT)*k/4096,inttof32(1));
+        glPolyFmt(POLY_ALPHA(31)|POLY_CULL_NONE|POLY_ID(57));
+        glColor(m->life<96 && (m->life&4)?RGB15(20,6,8):RGB15(4,6,16));
+    }
+    glBegin(GL_TRIANGLE);
+    for(unsigned i=0;i<EMBLEM_SEGMENTS;++i) {glVertex3v16(0,0,0);glVertex3v16(ring[i][0],ring[i][1],0);glVertex3v16(ring[i+1][0],ring[i+1][1],0);}
+    glEnd();
+    if(m->state!=BOMB_EXPLODING) {
+        glColor(RGB15(31,28,8));glBegin(GL_QUADS);
+        glVertex3v16(800,4000,10);glVertex3v16(1800,4000,10);glVertex3v16(1800,5200,10);glVertex3v16(800,5200,10);glEnd();
+    }
+    glPopMatrix(1);
+}
+
 /* Mario's fireball: MarioSpecial3 sprite on one textured quad. */
 static int fireball_texture;
 static void draw_fireball(float x,float y,unsigned age)
@@ -95,7 +134,6 @@ static void draw_fireball(float x,float y,unsigned age)
 
 /* Title emblem: 24 ring quads + 2 bars, untextured and translucent. The unit
  * circle is tabulated once at start-up, so the menu does no per-frame trig. */
-static v16 ring[EMBLEM_SEGMENTS+1][2];
 
 static void emblem_init(void)
 {
@@ -148,7 +186,7 @@ static void draw_title(int prompt)
         at(6,10,RED,"N   D   S");
         at(10,2,WHITE,"Port experimental de SSB64");
         at(11,2,WHITE,"para Nintendo DS / DS Lite");
-        at(21,1,GREEN,"Prueba 17 - mapa: Dream Land");
+        at(21,1,GREEN,"Prueba 18 - mapa: Dream Land");
         at(22,1,GREEN,"No es el juego completo");
         prompt=1;
     }
@@ -427,6 +465,7 @@ int main(void)
                 if(next==c->wait && (clips[i]==c->squat || clips[i]==c->squat_wait ||
                    (clips[i]==c->squat_rv && ages[i]+1<render_of(f)->model->clips[c->squat_rv].ticks)))next=c->squat_rv;
                 if(s->attack_frame>=0)next=combat_player_clip(s);
+                if(s->item_throw)next=s->player.state==SCENE_AIR?c->item_throw_air:c->item_throw;
                 else if(s->dash_ticks)next=s->run_age<render_of(f)->model->clips[c->dash].ticks?c->dash:c->run;
                 else if(s->brake_ticks)next=c->brake;
                 if(versus_captured(&match,i))next=c->capture;
@@ -472,10 +511,16 @@ int main(void)
                 if(age>=ticks)age=ticks-1;
             }
             rendered_age[i]=age;
+            /* Holding a bomb: shield on the back (itmain pickup sets base parts 21/19). */
+            FighterRender *r=&renders[f==&fighter_link];
+            if(f==&fighter_link && s->bomb.state==BOMB_HELD) {r->part_set=1u<<LINK_PART_21_0;r->part_clear=1u<<LINK_PART_19_0;}
             if(!match.invulnerable[i] || (match.tick&4))
                 actor(f,&s->player,s->player.facing,clips[i],age,tint,blend_left[i]?&blends[i]:NULL);
+            r->part_set=r->part_clear=0;
             for(unsigned j=0;j<4;++j)if(s->fireballs[j].life)
                 draw_fireball(s->fireballs[j].x,s->fireballs[j].y,140-s->fireballs[j].life);
+            if(s->boomerang.active)draw_boomerang(&s->boomerang);
+            if(s->bomb.state!=BOMB_NONE)draw_bomb(&s->bomb);
         }
         glFlush(0);
         if(hud_dirty) {draw_hud_frame(&match,watch);hud_dirty=0;}

@@ -62,6 +62,49 @@ int main(void)
         in[0]=(CombatInput){0};for(unsigned t=0;t<60;++t)versus_step(&v,in);
         assert(v.fighter[0].player.state==SCENE_WAIT);
     }
+    /* Boomerang: spawns on SpecialN flag0 (tick 26), flies out, turns, homes
+     * back and is caught; a second B while it is out throws nothing. */
+    versus_init_fighters(&v,&fighter_link,&fighter_mario);in[0]=in[1]=(CombatInput){0};
+    v.fighter[1].player.x=3000;  /* out of the way */
+    in[0].special=1;versus_step(&v,in);in[0]=(CombatInput){0};
+    unsigned spawn=0,turned=0,caught=0;float far=0;
+    for(unsigned t=1;t<400 && !caught;++t) {
+        if(t==40) {in[0].special=1;} else in[0].special=0;
+        versus_step(&v,in);const Boomerang *b=&v.fighter[0].boomerang;
+        if(b->active && !spawn)spawn=t;
+        if(b->active && b->x-v.fighter[0].player.x>far)far=b->x-v.fighter[0].player.x;
+        if(b->returning && !turned)turned=t;
+        for(unsigned e=0;e<v.sound_count;++e)if(v.sounds[e].sound==SOUND_BOOMERANG_CATCH)caught=t;
+    }
+    assert(spawn>=25 && spawn<=27 && turned>spawn+40 && caught>turned && far>2000);
+    /* Boomerang hits Mario on the way out (9%) and turns back. */
+    versus_init_fighters(&v,&fighter_link,&fighter_mario);in[0]=in[1]=(CombatInput){0};
+    v.fighter[1].player.x=900;in[0].special=1;versus_step(&v,in);in[0]=(CombatInput){0};
+    for(unsigned t=0;t<80;++t)versus_step(&v,in);
+    assert(v.percent[1]==9 && v.fighter[0].boomerang.returning);
+    /* Bomb: down-B pulls it (tick 29), X throws it forward (release tick 8);
+     * a fast bomb explodes on Mario. */
+    versus_init_fighters(&v,&fighter_link,&fighter_mario);in[0]=in[1]=(CombatInput){0};
+    v.fighter[1].player.x=600;in[0].down=1;in[0].special=1;versus_step(&v,in);in[0]=(CombatInput){0};
+    for(unsigned t=0;t<60;++t)versus_step(&v,in);
+    assert(v.fighter[0].bomb.state==BOMB_HELD);
+    in[0].attack=1;in[0].smash=1;versus_step(&v,in);in[0]=(CombatInput){0};
+    unsigned boom=0;
+    for(unsigned t=0;t<60 && !boom;++t) {
+        versus_step(&v,in);
+        for(unsigned e=0;e<v.sound_count;++e)if(v.sounds[e].sound==SOUND_EXPLODE_L)boom=1;
+    }
+    for(unsigned t=0;t<4;++t)versus_step(&v,in);  /* blast radius applies next tick */
+    assert(boom && v.percent[1]>0);
+    /* A held bomb explodes in Link's hand when its 300-tick fuse ends. */
+    versus_init_fighters(&v,&fighter_link,&fighter_mario);in[0]=in[1]=(CombatInput){0};
+    v.fighter[1].player.x=2000;in[0].down=1;in[0].special=1;versus_step(&v,in);in[0]=(CombatInput){0};
+    unsigned fuse=0;
+    for(unsigned t=1;t<400 && !fuse;++t) {
+        versus_step(&v,in);
+        for(unsigned e=0;e<v.sound_count;++e)if(v.sounds[e].sound==SOUND_EXPLODE_L)fuse=t;
+    }
+    assert(fuse>=325 && fuse<=332);
     /* FTAttributes weight multiplies knockback: Link 0.96 vs Mario 1.0. */
     MoveHit h={0};h.damage=10;h.scale=100;h.base=20;
     assert(combat_knockback_weight(50,&h,fighter_link.attr->weight)<combat_knockback_weight(50,&h,1));
@@ -73,6 +116,6 @@ int main(void)
         hits=v.fighter[0].hits+v.fighter[1].hits;
     }
     assert(hits);
-    printf("PASS: Link physics/kneebend, sword slash hit, air/ground spin, weight, Link-vs-Mario CPU (winner %d)\n",v.winner);
+    printf("PASS: Link physics/kneebend, crouch, sword slash hit, air/ground spin, boomerang out/return/catch/hit, bomb pull/throw/explode/fuse, weight, Link-vs-Mario CPU (winner %d)\n",v.winner);
     return 0;
 }

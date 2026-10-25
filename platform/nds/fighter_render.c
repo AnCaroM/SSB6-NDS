@@ -59,7 +59,7 @@ void fighter_render_draw(const FighterRender *r,unsigned clip,unsigned age,unsig
         decode(m,from->clip,from->tick,old_row);skeleton_blend(old_row,row,count,from->weight);
     }
     const FighterClip *c=&m->clips[clip];
-    uint32_t mask=part_mask(m,c,age);
+    uint32_t mask=(part_mask(m,c,age)|r->part_set)&~r->part_clear;
     glScalef32(m->scale,m->scale,m->scale);
     /* TransN/XRotN inserted joint; gameplay owns the movement-only TransN. */
     if(c->root!=2 || (flags&FIGHTER_DRAW_ROOT_MOTION))joint_matrix(row+m->joint_count*SKELETON_CHANNELS,m->translate);
@@ -103,7 +103,13 @@ void fighter_render_draw(const FighterRender *r,unsigned clip,unsigned age,unsig
 void fighter_render_draw_part(const FighterRender *r,unsigned part,unsigned tint)
 {
     const FighterModel *m=r->model;int previous=-2;
+    int32_t sum[3]={0,0,0},count=0;
+    for(unsigned i=0;i<m->vertex_count;++i)if(m->triangle_parts[i/3]==part) {
+        const FighterLocalVertex *p=&m->locals[m->local_map[i]];sum[0]+=p->x;sum[1]+=p->y;sum[2]+=p->z;++count;
+    }
+    if(!count)return;
     glScalef32(m->scale,m->scale,m->scale);
+    glTranslatef32(-sum[0]/count,-sum[1]/count,-sum[2]/count);
     glPolyFmt(POLY_ALPHA(31)|POLY_CULL_NONE);
     for(unsigned i=0;i<m->vertex_count;i+=3) {
         if(m->triangle_parts[i/3]!=part)continue;
