@@ -51,6 +51,17 @@ int main(void)
     v.fighter[0].player.x=-150;v.fighter[1].player.x=150;in[0].up=1;in[0].special=1;
     for(unsigned t=0;t<30;++t) {versus_step(&v,in);in[0]=(CombatInput){0};}
     assert(v.fighter[0].player.state!=SCENE_SPECIAL_HI && v.percent[1]>0);
+    /* Crouch for both: down held on the ground squats, down+X is the down tilt,
+     * releasing stands up; a tap on a raised platform still drops through. */
+    for(unsigned k=0;k<2;++k) {
+        versus_init_fighters(&v,k?&fighter_link:&fighter_mario,&fighter_mario);in[0]=in[1]=(CombatInput){0};
+        in[0].down=1;
+        for(unsigned t=0;t<5;++t)versus_step(&v,in);
+        assert(v.fighter[0].player.state==SCENE_SQUAT);
+        in[0].attack=1;versus_step(&v,in);assert(v.fighter[0].move==MOVE_DTILT && v.fighter[0].attack_frame>=0);
+        in[0]=(CombatInput){0};for(unsigned t=0;t<60;++t)versus_step(&v,in);
+        assert(v.fighter[0].player.state==SCENE_WAIT);
+    }
     /* FTAttributes weight multiplies knockback: Link 0.96 vs Mario 1.0. */
     MoveHit h={0};h.damage=10;h.scale=100;h.base=20;
     assert(combat_knockback_weight(50,&h,fighter_link.attr->weight)<combat_knockback_weight(50,&h,1));

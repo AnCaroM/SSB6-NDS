@@ -38,7 +38,7 @@ MAX_ERROR=2.1
 # (convert_mario_model/mario_animation: 572, 573, 580, 582 for Mario).
 LEDGE_PREFIX={'CliffCatch','CliffWait','CliffAttackQuick1','CliffAttackSlow1'}
 SINGLE_FRAME={'CliffWait'}  # one hanging pose, as in the Mario 1v1
-COMMON_CLIPS=['Wait','WalkMiddle','Dash','Run','RunBrake','KneeBend','JumpF','JumpB','JumpAerialF',
+COMMON_CLIPS=['Wait','WalkMiddle','Squat','SquatWait','SquatRv','Dash','Run','RunBrake','KneeBend','JumpF','JumpB','JumpAerialF',
     'JumpAerialB','Fall','LandingLight','LandingHeavy','DamageHi1','DamageHi2','DamageHi3','DamageN1',
     'DamageN2','DamageN3','DamageLw1','DamageLw2','DamageLw3','DamageAir1','DamageAir2','DamageAir3',
     'DamageFlyHi','DamageFlyN','DamageFlyLw','DamageFlyTop','DamageFlyRoll','DamageFall','FallSpecial',
@@ -284,7 +284,7 @@ def export_moves(name,cfg,clips,float_frames,parents,motions,tables):
     tick_of=lambda m:unique[clips[position[m]].get('index',clips[position[m]].get('same'))]['ticks']
     clip=lambda m:position[m]
     clipmap=[clip(m) for m in ['Wait','WalkMiddle','JumpF','Fall','LandingLight','CliffWait','CliffCatch','JumpAerialF',
-             'JumpAerialB','FallSpecial','Dash','Run','RunBrake','CapturePulled','DamageFall']]
+             'JumpAerialB','FallSpecial','Dash','Run','RunBrake','CapturePulled','DamageFall','Squat','SquatWait','SquatRv']]
     snd=cfg['sounds'];sounds=[SOUND[snd[k]] for k in ('jump','jump_air','land','damage','dead','dead_slam')]
     smash='{'+','.join(str(SOUND[x]) for x in snd['smash'])+'}'
     throws=throw_hits(cfg,motions)
@@ -454,6 +454,8 @@ def convert(name,check_mario=False):
             f'extern const Fighter fighter_{name};']
     if name=='mario':header.append('extern const uint16_t mario_fireball_pixels[256];')
     header+=[f'#define {name.upper()}_CLIP_{c["motion"].upper()} {i}' for i,c in enumerate(clips)]
+    # Model parts by fighter joint and part id (e.g. LINK_PART_11_1: boomerang in hand).
+    header+=[f'#define {name.upper()}_PART_{j}_{i} {k}' for k,(j,i) in enumerate(parts)]
     (out/f'{name}_model.h').write_text('\n'.join(header+['#endif'])+'\n')
     print(f'{Name}: {len(depths)} joints ({len(slots)} slots), {len(model.triangles)} triangles, '
           f'{texture_bytes} texture bytes, {len(clips)} clips, {total} pose bytes, max error {worst:.3f}')

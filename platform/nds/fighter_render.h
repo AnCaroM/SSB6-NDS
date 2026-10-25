@@ -12,3 +12,6 @@ int fighter_render_init(FighterRender *render,const FighterModel *model);
 #define FIGHTER_DRAW_ROOT_MOTION 1
 void fighter_render_draw(const FighterRender *render,unsigned clip,unsigned age,unsigned tint,
                          const FighterBlend *from,unsigned flags);
+/* One model part on its own (e.g. Link's thrown boomerang): its display-list
+ * local vertices under the current matrix, in model units/divisor. */
+void fighter_render_draw_part(const FighterRender *render,unsigned part,unsigned tint);

@@ -50,6 +50,7 @@ static unsigned clip_for(const Fighter *f,const MotionScene *s)
     if(s->state==SCENE_SPECIAL_FALL)return c->special_fall;
     if(s->state==SCENE_CLIFF)return s->state_ticks<SCENE_CATCH_TICKS?c->cliff_catch:c->cliff_wait;
     if (s->state == SCENE_WALK) return c->walk;
+    if (s->state == SCENE_SQUAT) return s->state_ticks<render_of(f)->model->clips[c->squat].ticks?c->squat:c->squat_wait;
     if (s->state == SCENE_KNEE) return c->jump;
     if(s->state==SCENE_AIR && s->air_jump) {
         unsigned clip=s->air_jump==1?c->jump_aerial_f:c->jump_aerial_b;
@@ -66,7 +67,7 @@ static void actor(const Fighter *f,const MotionScene *s,int facing,unsigned clip
     float x=s->x,y=s->y;
     /* Clips driven by scene timers rather than the per-clip age. */
     if(clip==c->jump_aerial_f || clip==c->jump_aerial_b)age=s->air_jump_ticks;
-    if(clip==c->cliff_catch)age=s->state_ticks;
+    if(clip==c->cliff_catch || clip==c->squat)age=s->state_ticks;
     if(clip==up_clip(f) || clip==c->special_fall)age=s->state_ticks;
     if(s->state==SCENE_CLIFF) {x=s->cliff_side*2318;y=0;facing=-s->cliff_side;}
     glTranslatef32(floattof32(x/WORLD_UNIT),floattof32(y/WORLD_UNIT),0);
@@ -422,6 +423,9 @@ int main(void)
             if(advances)for(unsigned i=0;i<2;++i) {
                 CombatScene *s=&match.fighter[i];const Fighter *f=s->fighter;const FighterClipMap *c=&f->clips;
                 unsigned next=clip_for(f,&s->player);
+                /* SquatRv plays once when down is released (until it ends or another state starts). */
+                if(next==c->wait && (clips[i]==c->squat || clips[i]==c->squat_wait ||
+                   (clips[i]==c->squat_rv && ages[i]+1<render_of(f)->model->clips[c->squat_rv].ticks)))next=c->squat_rv;
                 if(s->attack_frame>=0)next=combat_player_clip(s);
                 else if(s->dash_ticks)next=s->run_age<render_of(f)->model->clips[c->dash].ticks?c->dash:c->run;
                 else if(s->brake_ticks)next=c->brake;

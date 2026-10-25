@@ -99,3 +99,26 @@ void fighter_render_draw(const FighterRender *r,unsigned clip,unsigned age,unsig
     }
     if(previous!=-2)glEnd();
 }
+
+void fighter_render_draw_part(const FighterRender *r,unsigned part,unsigned tint)
+{
+    const FighterModel *m=r->model;int previous=-2;
+    glScalef32(m->scale,m->scale,m->scale);
+    glPolyFmt(POLY_ALPHA(31)|POLY_CULL_NONE);
+    for(unsigned i=0;i<m->vertex_count;i+=3) {
+        if(m->triangle_parts[i/3]!=part)continue;
+        int texture=m->triangle_textures[i/3];
+        if(texture!=previous) {
+            if(previous!=-2)glEnd();
+            glBindTexture(0,texture<0?0:r->textures[texture]);
+            previous=texture;glBegin(GL_TRIANGLE);
+        }
+        for(unsigned j=0;j<3;++j) {
+            const FighterVertex *v=&m->vertices[i+j];const FighterLocalVertex *p=&m->locals[m->local_map[i+j]];
+            unsigned color=v->color;
+            if(tint!=0x7fff)color=RGB15((color&31)*(tint&31)/31,((color>>5)&31)*((tint>>5)&31)/31,((color>>10)&31)*((tint>>10)&31)/31);
+            glColor(color);glTexCoord2t16(v->u,v->v);glVertex3v16(p->x,p->y,p->z);
+        }
+    }
+    if(previous!=-2)glEnd();
+}
