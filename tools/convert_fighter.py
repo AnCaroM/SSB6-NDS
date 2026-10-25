@@ -38,7 +38,7 @@ MAX_ERROR=2.1
 # (convert_mario_model/mario_animation: 572, 573, 580, 582 for Mario).
 LEDGE_PREFIX={'CliffCatch','CliffWait','CliffAttackQuick1','CliffAttackSlow1'}
 SINGLE_FRAME={'CliffWait'}  # one hanging pose, as in the Mario 1v1
-COMMON_CLIPS=['Wait','WalkMiddle','Squat','SquatWait','SquatRv','Dash','Run','RunBrake','KneeBend','JumpF','JumpB','JumpAerialF',
+COMMON_CLIPS=['Wait','WalkMiddle','Squat','SquatWait','SquatRv','LightThrowF','LightThrowAirF','Dash','Run','RunBrake','KneeBend','JumpF','JumpB','JumpAerialF',
     'JumpAerialB','Fall','LandingLight','LandingHeavy','DamageHi1','DamageHi2','DamageHi3','DamageN1',
     'DamageN2','DamageN3','DamageLw1','DamageLw2','DamageLw3','DamageAir1','DamageAir2','DamageAir3',
     'DamageFlyHi','DamageFlyN','DamageFlyLw','DamageFlyTop','DamageFlyRoll','DamageFall','FallSpecial',
@@ -284,7 +284,8 @@ def export_moves(name,cfg,clips,float_frames,parents,motions,tables):
     tick_of=lambda m:unique[clips[position[m]].get('index',clips[position[m]].get('same'))]['ticks']
     clip=lambda m:position[m]
     clipmap=[clip(m) for m in ['Wait','WalkMiddle','JumpF','Fall','LandingLight','CliffWait','CliffCatch','JumpAerialF',
-             'JumpAerialB','FallSpecial','Dash','Run','RunBrake','CapturePulled','DamageFall','Squat','SquatWait','SquatRv']]
+             'JumpAerialB','FallSpecial','Dash','Run','RunBrake','CapturePulled','DamageFall','Squat','SquatWait','SquatRv',
+             'LightThrowF','LightThrowAirF']]
     snd=cfg['sounds'];sounds=[SOUND[snd[k]] for k in ('jump','jump_air','land','damage','dead','dead_slam')]
     smash='{'+','.join(str(SOUND[x]) for x in snd['smash'])+'}'
     throws=throw_hits(cfg,motions)

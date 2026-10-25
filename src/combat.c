@@ -3,6 +3,7 @@
 #include "combat.h"
 #include "motion.h"
 #include <string.h>
+#include <math.h>
 #include "damage_angles.h"
 static int air(const MotionScene *p) {return p->state==SCENE_AIR;}
 static int ground(const MotionScene *p) {return p->state==SCENE_WAIT || p->state==SCENE_WALK || p->state==SCENE_SQUAT;}
@@ -137,6 +138,111 @@ static void projectiles(CombatScene *s)
         }
     }
 }
+/* ---- Link: boomerang and bomb (reduced from wplinkboomerang.c / itlinkbomb.c,
+ * values in docs/link-prueba18.md). No map collision for the boomerang, no
+ * pickup/reflection of either, and the explosion does not hurt Link. ---- */
+#define BOOMERANG_X 150
+#define BOOMERANG_Y 290
+#define BOMB_LIFE 300
+static void boomerang_spawn(CombatScene *s)
+{
+    Boomerang *b=&s->boomerang;memset(b,0,sizeof *b);
+    b->active=1;b->x=s->player.x+BOOMERANG_X*s->attack_facing;b->y=s->player.y+BOOMERANG_Y;
+    b->speed=s->boomerang_smash?114:85;b->life=s->boomerang_smash?190:160;
+    /* Stick up/down at spawn: the +-30 degree clamp (digital pad). */
+    b->dx=s->aim?.8660254f*s->attack_facing:(float)s->attack_facing;b->dy=s->aim?.5f*s->aim:0;
+}
+static void boomerang_return(Boomerang *b,float turn)
+{b->returning=1;b->dx=-b->dx;b->dy=-b->dy;b->homing=140;b->turn=turn;}
+static void boomerang_update(CombatScene *s)
+{
+    Boomerang *b=&s->boomerang;
+    if(!b->active)return;
+    ++b->age;
+    if(!--b->life) {b->active=0;return;}
+    if(!b->returning) {
+        b->speed-=1.4f;
+        if(b->speed<=10) {b->speed=10;boomerang_return(b,.75f);}
+    } else {
+        b->speed+=1;if(b->speed>90)b->speed=90;
+        if(b->homing) {
+            --b->homing;
+            /* Turn toward Link's chest by at most `turn` degrees: rotation by a
+             * fixed small angle (precomputed cos/sin, no per-tick trig). */
+            float tx=s->player.x-b->x,ty=s->player.y+BOOMERANG_Y-b->y;
+            float c=b->turn>1?.99965732f:.99991433f,sn=b->turn>1?.02617695f:.01308960f;
+            if(b->dx*ty-b->dy*tx<0)sn=-sn;
+            float dx=c*b->dx-sn*b->dy,dy=sn*b->dx+c*b->dy;b->dx=dx;b->dy=dy;
+        }
+    }
+    b->x+=b->dx*b->speed;b->y+=b->dy*b->speed;
+    float cx=s->player.x-b->x,cy=s->player.y+BOOMERANG_Y-b->y;
+    if(b->returning && cx*cx+cy*cy<180*180) {b->active=0;b->caught=1;return;}
+    if(!b->hit && !s->captured && !s->target_immune && overlap(&s->target,b->x,b->y,100)) {
+        MoveHit h={0};h.damage=b->returning?8:9;h.angle=70;h.scale=30;h.base=55;h.sound=SOUND_KICK_L;
+        h.cos_angle=1401;h.sin_angle=3849;
+        damage(s,&h,b->dx>=0?1:-1,b->y);b->hit=1;
+        if(!b->returning) {b->speed-=5;boomerang_return(b,1.5f);}
+    }
+}
+static void bomb_explode(Bomb *m) {m->state=BOMB_EXPLODING;m->age=0;m->hit=0;m->vx=m->vy=0;}
+static void bomb_update(CombatScene *s)
+{
+    Bomb *m=&s->bomb;
+    if(m->state==BOMB_NONE)return;
+    if(m->state==BOMB_EXPLODING) {
+        /* Radius 300/230/150 over ticks 0-5, then gone. */
+        float radius=m->age<2?300:m->age<4?230:150;
+        if(!m->hit && !s->captured && !s->target_immune && overlap(&s->target,m->x,m->y,radius)) {
+            MoveHit h={0};h.damage=5;h.angle=361;h.scale=20;h.base=60;h.sound=SOUND_EXPLODE_L;
+            damage(s,&h,s->target.x>=m->x?1:-1,m->y);m->hit=1;
+        }
+        if(++m->age>=6)m->state=BOMB_NONE;
+        return;
+    }
+    if(!--m->life) {bomb_explode(m);return;}
+    if(m->state==BOMB_HELD) {
+        const MoveFrame *f=s->attack_frame>=0?at(s,s->move,(unsigned)s->attack_frame):0;
+        m->x=s->player.x+(f?f->spawn_x:70)*s->player.facing;m->y=s->player.y+(f?f->spawn_y:170);
+        return;
+    }
+    if(m->state==BOMB_RESTING)return;
+    float old_y=m->y;m->vy-=1.2f;
+    float v2=m->vx*m->vx+m->vy*m->vy;
+    if(v2>100*100) {float k=100/sqrtf(v2);m->vx*=k;m->vy*=k;}
+    m->x+=m->vx;m->y+=m->vy;
+    int fast=m->vx>36 || m->vx< -36 || m->vy>25 || m->vy< -25;
+    unsigned n;const StagePlatform *p=stage_platforms(s->player.stage,&n);
+    for(unsigned i=0;i<n;++i)if(m->vy<0 && m->x>=p[i].left && m->x<=p[i].right && old_y>=p[i].height && m->y<=p[i].height) {
+        if(fast) {m->y=p[i].height;bomb_explode(m);return;}
+        m->y=p[i].height;
+        if(++m->landings>=2) {m->state=BOMB_RESTING;m->vx=m->vy=0;}
+        else {float speed=sqrtf(m->vx*m->vx+m->vy*m->vy);m->vy=(-m->vy+speed)*.15f;m->vx*=.15f;}
+        break;
+    }
+    if(m->y<stage_blast_bottom(s->player.stage)) {m->state=BOMB_NONE;return;}
+    if(!s->captured && !s->target_immune && overlap(&s->target,m->x,m->y,110)) {
+        if(fast) {bomb_explode(m);return;}
+        float speed=sqrtf(m->vx*m->vx+m->vy*m->vy);
+        MoveHit h={0};h.damage=(int16_t)(2+(unsigned)(speed*.1f+.999f));h.angle=80;h.scale=20;h.base=60;h.sound=SOUND_KICK_M;
+        h.cos_angle=711;h.sin_angle=4034;
+        int dir=s->target.x>=m->x?1:-1;damage(s,&h,dir,m->y);
+        m->vx=-8.0f*dir;m->vy=20;
+    }
+}
+/* LightThrow (ftcommondata.c item throw table x Link 100% x bomb .6):
+ * ground F 36@15, Hi 39@90, Lw 39@-70, F4 66@8, Hi4/Lw4 66; air F 45@8,
+ * Hi 48@90, Lw 45@-90, F4 72@7, Hi4 72@90, Lw4 84@-90. Released at tick 8. */
+static void bomb_throw_start(CombatScene *s,CombatInput in,int dir,int smash)
+{
+    int a=air(&s->player);float vx,vy;
+    if(dir)s->player.facing=dir;
+    if(in.up) {vx=0;vy=a?(smash?72:48):(smash?66:39);}
+    else if(in.down) {vx=a?0:(smash?22.6f:13.3f);vy=a?(smash?-84:-45):(smash?-62:-36.6f);}
+    else if(a) {vx=smash?71.5f:44.6f;vy=smash?8.8f:6.3f;}
+    else {vx=smash?65.4f:34.8f;vy=smash?9.2f:9.3f;}
+    s->throw_vx=vx*s->player.facing;s->throw_vy=vy;s->item_throw=1;
+}
 static MarioMove select_normal(const CombatScene *s,CombatInput in)
 {
     if(s->player.state==SCENE_CLIFF)return in.smash?MOVE_LEDGE_SLOW_START:MOVE_LEDGE_START;
@@ -167,6 +273,7 @@ static MarioMove select_normal(const CombatScene *s,CombatInput in)
 void combat_update(CombatScene *s,CombatInput in)
 {
     ++s->tick;
+    s->aim=in.up?1:in.down?-1:0;
     int pressed=in.attack && !s->attack_was_held;
     int special=in.special && !s->special_was_held,grab=in.grab && !s->grab_was_held;
     s->attack_was_held=!!in.attack;s->special_was_held=!!in.special;s->grab_was_held=!!in.grab;
@@ -211,12 +318,21 @@ void combat_update(CombatScene *s,CombatInput in)
         else if(s->capture_age>90) {s->captured=0;s->attack_frame=-1;s->target.state=SCENE_AIR;}
     }
     if(s->attack_frame<0) {
-        if(special && !mario(s)) {
-            /* Link: spin attack only; boomerang and bomb arrive with Prueba18. */
-            if(in.up) {
-                if(dir)s->player.facing=dir;
-                combat_start_move(s,air(&s->player)?MOVE_UP_AIR:MOVE_UP);
+        if(special && !mario(s) && s->item_throw) {
+        } else if(special && !mario(s)) {
+            if(dir)s->player.facing=dir;
+            if(in.up)combat_start_move(s,air(&s->player)?MOVE_UP_AIR:MOVE_UP);
+            else if(in.down) {
+                /* Down-B: pull a bomb, or throw the held one as a smash throw. */
+                if(s->bomb.state==BOMB_HELD)bomb_throw_start(s,in,0,1);
+                else if(s->bomb.state==BOMB_NONE)combat_start_move(s,air(&s->player)?MOVE_TORNADO_AIR:MOVE_TORNADO);
+            } else {
+                /* Neutral B: boomerang; SpecialNEmpty if one is already out. */
+                s->boomerang_smash=in.smash;s->boomerang_empty=s->boomerang.active;
+                combat_start_move(s,air(&s->player)?MOVE_FIRE_AIR:MOVE_FIRE);
             }
+        } else if(pressed && !mario(s) && s->bomb.state==BOMB_HELD && !s->item_throw) {
+            bomb_throw_start(s,in,dir,in.smash);
         } else if(special) {
             MarioMove m=in.up?MOVE_UP:in.down?(air(&s->player)?MOVE_TORNADO_AIR:MOVE_TORNADO):
                 (air(&s->player)?MOVE_FIRE_AIR:MOVE_FIRE);
@@ -226,11 +342,20 @@ void combat_update(CombatScene *s,CombatInput in)
                     s->move=m;s->attack_frame=0;s->attack_facing=s->player.facing;s->connected_strikes=0;
                 }
             } else combat_start_move(s,m);
-        } else if(pressed) {
+        } else if(pressed && !s->item_throw) {
             MarioMove m=select_normal(s,in);
             if(!air(&s->player) && dir)s->player.facing=dir;
             combat_start_move(s,m);
-        } else if(grab && !in.smash)combat_start_move(s,MOVE_GRAB);
+        } else if(grab && !in.smash && !s->item_throw && s->bomb.state!=BOMB_HELD)combat_start_move(s,MOVE_GRAB);
+    }
+    if(s->item_throw) {
+        /* Release on tick 8 (LightThrow scripts), short recovery afterwards. */
+        if(s->item_throw==8 && s->bomb.state==BOMB_HELD) {
+            s->bomb.state=BOMB_FLYING;s->bomb.vx=s->throw_vx;s->bomb.vy=s->throw_vy;s->bomb.landings=0;
+        }
+        if(++s->item_throw>20)s->item_throw=0;
+        if(!air(&s->player))in.motion.stick_x=0;
+        in.motion.jump_held=0;
     }
     const MoveFrame *f=s->attack_frame>=0?at(s,s->move,(unsigned)s->attack_frame):0;
     unsigned old_respawns=s->player.respawns,old_landings=s->player.landings,old_grabs=s->player.cliff_grabs;
@@ -297,6 +422,16 @@ void combat_resolve(CombatScene *s)
     }
     if(f) {
         if(mario(s) && (s->move==MOVE_FIRE || s->move==MOVE_FIRE_AIR) && !s->spawned && (f->flags&1)) {spawn(s,f);s->spawned=1;}
+        if(!mario(s) && (s->move==MOVE_FIRE || s->move==MOVE_FIRE_AIR) && !s->spawned && (f->flags&1)) {
+            if(!s->boomerang_empty && !s->boomerang.active)boomerang_spawn(s);
+            s->spawned=1;
+        }
+        if(!mario(s) && (s->move==MOVE_TORNADO || s->move==MOVE_TORNADO_AIR) && !s->spawned && (f->flags&1)) {
+            if(s->bomb.state==BOMB_NONE) {
+                Bomb *m=&s->bomb;memset(m,0,sizeof *m);m->state=BOMB_HELD;m->life=BOMB_LIFE;
+            }
+            s->spawned=1;
+        }
         if((s->move==MOVE_THROW_F || s->move==MOVE_THROW_B) && s->captured && (f->flags&4))release_throw(s);
         for(unsigned i=0;i<f->count && !s->captured && !s->target_immune;++i) {
             const MoveHit *h=&s->fighter->hits[f->first+i];uint64_t bit=UINT64_C(1)<<h->strike;
@@ -315,6 +450,7 @@ void combat_resolve(CombatScene *s)
         }
     }
     projectiles(s);
+    if(!mario(s)) {boomerang_update(s);bomb_update(s);}
 }
 void combat_step(CombatScene *s,SceneInput in,int attack,int drop)
 {CombatInput c={0};c.motion=in;c.attack=attack;c.drop=drop;combat_update(s,c);}

@@ -56,6 +56,11 @@ SOUNDS=[
     ('LINK_DAMAGE','nSYAudioVoiceLinkDamage',2,.6),
     ('LINK_DEAD','nSYAudioVoiceLinkDead',4,.7),
     ('LINK_DEAD_SLAM','nSYAudioFGMLinkDeadSlam',4,.8),
+    # Prueba18: boomerang return/catch, bomb pull and explosion.
+    ('BOOMERANG_RETURN','nSYAudioFGMLinkSpecialNReturn',1,.6),
+    ('BOOMERANG_CATCH','nSYAudioFGMLinkSpecialNGet',1,.5),
+    ('BOMB_GET','nSYAudioFGMLinkSpecialLwGet',1,.5),
+    ('EXPLODE_L','nSYAudioFGMExplodeL',4,1.),
 ]
 NONE=255
 SMASH_RANDOM=254  # PlaySmashVoice; runtime picks VOICE_SMASH1..3
