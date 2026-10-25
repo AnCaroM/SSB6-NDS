@@ -53,7 +53,7 @@ def main():
              '-DARM9', '-D__NDS__', '-ffp-contract=off', '-fno-fast-math',
              '-ffunction-sections', '-fdata-sections', '-I' + str(ROOT / 'src'),
              '-I' + str(sdk / 'libnds/include'), '-I' + str(calico / 'include')]
-    sources = ['src/motion.c', 'src/stage.c', 'src/motion_scene.c', 'src/special_hi.c', 'platform/nds/main.c']
+    sources = ['src/motion.c', 'src/stage.c', 'src/motion_scene.c', 'src/fighter_attr.c', 'src/special_hi.c', 'platform/nds/main.c']
     stem = 'ssb-' + args.demo
     if args.animation_review:
         if args.demo!='versus':parser.error('--animation-review requires --demo versus')
@@ -71,22 +71,29 @@ def main():
         subprocess.run([sys.executable, str(ROOT / 'tools/convert_mario_model.py')], check=True)
         sources = ['platform/nds/model_main.c', 'platform/nds/mario_render.c', 'build/model/mario_mesh.c', 'build/model/mario_clips.c']
         if args.demo in ('scene','combat','dreamland','versus'):
-            sources = ['src/motion.c', 'src/stage.c', 'src/motion_scene.c', 'src/special_hi.c', 'platform/nds/scene_main.c', 'platform/nds/stage_render.c',
+            sources = ['src/motion.c', 'src/stage.c', 'src/motion_scene.c', 'src/fighter_attr.c', 'src/special_hi.c', 'platform/nds/scene_main.c', 'platform/nds/stage_render.c',
                        'platform/nds/mario_render.c', 'build/model/mario_mesh.c', 'build/model/mario_clips.c']
             if args.demo in ('combat','dreamland','versus'):
                 sources[sources.index('platform/nds/scene_main.c')] = 'platform/nds/combat_main.c'
                 sources.append('src/combat.c')
                 sources.append('build/model/mario_moves.c')
+                sources.append('src/fighter_mario_legacy.c')
                 sources.append('src/recovery_demo.c')
             if args.demo=='versus':
-                sources[sources.index('platform/nds/combat_main.c')]='platform/nds/versus_main.c'
+                # Mario and Link come from the generic converter (bone renderer);
+                # the legacy Mario mesh/clips/moves are not linked.
+                for legacy in ('platform/nds/combat_main.c','platform/nds/mario_render.c','build/model/mario_mesh.c',
+                               'build/model/mario_clips.c','build/model/mario_moves.c','src/fighter_mario_legacy.c'):
+                    sources.remove(legacy)
+                sources.insert(0,'platform/nds/versus_main.c')
                 subprocess.run([sys.executable,str(ROOT/'tools/extract_fight_audio.py')],check=True)
                 flags.append('-I'+str(ROOT/'build/audio'))
                 sources+=['src/versus.c','src/menu.c','platform/nds/fight_audio.c','build/audio/fight_samples.c']
-                # Link viewer: generic converted fighter on the bone renderer.
-                subprocess.run([sys.executable,str(ROOT/'tools/convert_fighter.py'),'--fighter','link'],check=True)
-                flags.append('-I'+str(ROOT/'build/fighters/link'))
-                sources+=['platform/nds/fighter_render.c','build/fighters/link/link_model.c']
+                for fighter in ('mario','link'):
+                    subprocess.run([sys.executable,str(ROOT/'tools/convert_fighter.py'),'--fighter',fighter],check=True)
+                    flags.append('-I'+str(ROOT/'build/fighters'/fighter))
+                    sources.append(f'build/fighters/{fighter}/{fighter}_model.c')
+                sources.append('platform/nds/fighter_render.c')
                 if args.animation_review:sources.append('src/animation_review.c')
             if args.demo in ('dreamland','versus'):
                 subprocess.run([sys.executable,str(ROOT/'tools/extract_dreamland.py')],check=True)
@@ -94,7 +101,7 @@ def main():
                 sources.remove('platform/nds/stage_render.c')
                 sources+=['src/camera.c','platform/nds/dreamland_render.c','build/dreamland/dreamland_mesh.c']
                 flags+=['-DORIGINAL_DREAMLAND=1','-I'+str(ROOT/'build/dreamland')]
-        if args.skeletal_poses:sources.append('build/model/mario_skeleton.c')
+        if args.skeletal_poses and args.demo!='versus':sources.append('build/model/mario_skeleton.c')
         flags.append('-I' + str(ROOT / 'build/model'))
     objects = []
     for index, source in enumerate(sources):
@@ -113,11 +120,11 @@ def main():
                       'scene': 'SSB Mario;Integration;Original model and clips',
                       'combat': 'SSB NDS;Prueba 02;Mario - combate de prueba',
                       'dreamland': 'SSB NDS;Prueba 09;Mario - animaciones revisadas',
-                      'versus': 'SSB NDS;Prueba 16;Visor de Link',
+                      'versus': 'SSB NDS;Prueba 17;Mario y Link',
                       'motion': 'SSB Motion;Research scene;Provisional movement'}[args.demo])], env=env, check=True)
     size_output = subprocess.check_output([str(size), str(elf)], text=True)
     inputs=sources + [p.relative_to(ROOT).as_posix() for folder in
-        ['src','platform/nds','build/model','build/dreamland','build/audio','build/fighters/link']
+        ['src','platform/nds','build/model','build/dreamland','build/audio','build/fighters/mario','build/fighters/link']
         for p in (ROOT/folder).glob('*.h')]
     (build / (stem + '-build-info.json')).write_text(json.dumps({
         'compiler': subprocess.check_output([str(gcc), '--version'], text=True).splitlines()[0],

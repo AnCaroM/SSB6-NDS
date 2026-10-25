@@ -2,6 +2,7 @@
 #define SSB_MOTION_SCENE_H
 #include <stdint.h>
 #include "stage.h"
+#include "fighter.h"
 #define SCENE_CATCH_TICKS 8
 
 /* Experimental scene: numeric primitives come from the decomp; the scene
@@ -27,6 +28,9 @@ typedef struct {
     int air_jump; /* 0 ordinary fall, 1 JumpAerialF, 2 JumpAerialB. */
     unsigned special_uses,landing_ticks;
     int special_used,special_air,special_tilt;
+    const FighterAttributes *attr; /* physics numbers of this fighter */
+    uint8_t kind;                  /* FighterKind: selects the up-special physics */
+    unsigned special_ticks;        /* length of a non-Mario aerial up-special */
 } MotionScene;
 
 void scene_init(MotionScene *scene);
@@ -35,4 +39,6 @@ void scene_drop_through(MotionScene *scene);
 void scene_step(MotionScene *scene, SceneInput input);
 const char *scene_state_name(SceneState state);
 int scene_special_hi(MotionScene *scene,int stick_x);
+/* Link SpecialAirHi (ftlinkspecialhi.c): vertical launch, then freefall. */
+int scene_special_hi_rise(MotionScene *scene,unsigned ticks);
 #endif

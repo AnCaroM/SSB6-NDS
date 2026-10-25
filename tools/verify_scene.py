@@ -19,7 +19,10 @@ def main():
     env = dict(os.environ, ZIG_GLOBAL_CACHE_DIR=str(ROOT / '.cache/zig'),
                ZIG_LOCAL_CACHE_DIR=str(ROOT / '.cache/zig-local'))
     flags = ['-std=c11', '-O2', '-UNDEBUG', '-Wall', '-Wextra', '-Werror', '-ffp-contract=off',
-             '-fno-fast-math', '-Isrc', 'src/motion.c', 'src/stage.c', 'src/motion_scene.c', 'src/combat.c','src/versus.c', 'src/animation_review.c', 'src/camera.c', 'src/recovery_demo.c', 'src/special_hi.c', 'build/model/mario_moves.c']
+             '-fno-fast-math', '-Isrc', 'src/motion.c', 'src/stage.c', 'src/motion_scene.c', 'src/fighter_attr.c', 'src/combat.c','src/versus.c', 'src/animation_review.c', 'src/camera.c', 'src/recovery_demo.c', 'src/special_hi.c',
+             'build/fighters/mario/mario_model.c', 'build/fighters/link/link_model.c']
+    for fighter in ('mario','link'):
+        subprocess.run([sys.executable,str(ROOT/'tools/convert_fighter.py'),'--fighter',fighter],check=True)
     test = build / ('test_scene' + suffix)
     trace = build / ('scene_trace' + suffix)
     map_test = build / ('test_stage' + suffix)
@@ -32,6 +35,7 @@ def main():
                            ('tests/test_moves.c',build/('test_moves'+suffix)),
                            ('tests/test_versus.c',build/('test_versus'+suffix)),
                            ('tests/test_damage.c',build/('test_damage'+suffix)),
+                           ('tests/test_link.c',build/('test_link'+suffix)),
                            ('tests/test_animation_review.c',build/('test_animation_review'+suffix)),
                            ('tests/test_camera.c',build/('test_camera'+suffix)), ('src/scene_trace.c', trace)]:
         subprocess.run(compiler + flags + [source, '-o', str(output), '-lm'],
@@ -46,6 +50,7 @@ def main():
     result += subprocess.check_output([str(build/('test_moves'+suffix))], text=True)
     result += subprocess.check_output([str(build/('test_versus'+suffix))], text=True)
     result += subprocess.check_output([str(build/('test_damage'+suffix))], text=True)
+    result += subprocess.check_output([str(build/('test_link'+suffix))], text=True)
     result += subprocess.check_output([str(build/('test_animation_review'+suffix))], text=True)
     pose_test=build/('test_pose_bank'+suffix)
     subprocess.run(compiler+['-std=c11','-O2','-UNDEBUG','-DMARIO_COMPACT_POSES=1',
@@ -57,11 +62,9 @@ def main():
         '-Isrc','-Ibuild/model','build/model/mario_clips.c','build/model/mario_skeleton.c','tests/test_skeleton.c',
         '-o',str(skeleton_test),'-lm'],cwd=ROOT,env=env,check=True)
     result += subprocess.check_output([str(skeleton_test)],text=True)
-    for fighter in ('mario','link'):
-        subprocess.run([sys.executable,str(ROOT/'tools/convert_fighter.py'),'--fighter',fighter],check=True)
     plan_test=build/('test_fighter_plan'+suffix)
     subprocess.run(compiler+['-std=c11','-O2','-UNDEBUG','-Wall','-Wextra','-Werror','-Isrc',
-        'build/fighters/link/link_model.c','tests/test_fighter_plan.c','-o',str(plan_test),'-lm'],cwd=ROOT,env=env,check=True)
+        'src/fighter_attr.c','build/fighters/link/link_model.c','tests/test_fighter_plan.c','-o',str(plan_test),'-lm'],cwd=ROOT,env=env,check=True)
     result += subprocess.check_output([str(plan_test)],text=True)
     subprocess.run([sys.executable,str(ROOT/'tools/extract_fight_audio.py')],check=True)
     audio_test=build/('test_audio'+suffix)

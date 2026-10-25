@@ -25,7 +25,9 @@ SPECS=[
 ('GETUP_D',553,'DownAttackD'),('GETUP_U',554,'DownAttackU'),
 ('LEDGE_START',580,'CliffAttackQuick1'),('LEDGE',581,'CliffAttackQuick2'),
 ('LEDGE_SLOW_START',582,'CliffAttackSlow1'),('LEDGE_SLOW',583,'CliffAttackSlow2'),
-('GRAB_HOLD',562,None)]
+('GRAB_HOLD',562,None),
+# Air up-special (Link's SpecialAirHi differs; Mario shares SuperJumpPunch).
+('UP_AIR',637,'SuperJumpPunchAir_0x16CC')]
 
 def us_source(text):
     result=[];stack=[];active=True
@@ -43,7 +45,7 @@ def us_source(text):
 def scripts(root):
     source=us_source((root/'upstream/ssb-decomp-re/src/relocData/202_MarioMainMotion.c').read_text())
     return {name:re.findall(r'(ft\w+)\(([^()]*)\)',body)
-            for name,body in re.findall(r'ftMotionCommand\s+(\w+)\[\]\s*=\s*\{(.*?)\n\};',source,re.S)}
+            for name,body in re.findall(r'(?:ftMotionCommand|u32)\s+(\w+)\[\]\s*=\s*\{(.*?)\n\};',source,re.S)}
 
 SOUND_OPS=('ftMotionPlayFGM','ftMotionPlayVoice','ftMotionPlayInterruptableVoice',
            'ftMotionCommandPlayFGMStoreInfo','ftMotionCommandPlaySmashVoice')
@@ -53,14 +55,16 @@ def sound_id(op,name):
     if op=='ftMotionCommandPlaySmashVoice':return SMASH_RANDOM
     return BY_FGM.get(name,NONE)
 
-def timeline(table,name):
+def timeline(table,name,limit=None):
+    """Attack/flag/sound events; name is a script suffix (Mario) or a full symbol."""
     events=[];clock=0;budget=0
     def run(name,depth=0):
         nonlocal clock,budget
         if depth>8:raise ValueError('Moveset call depth')
-        code=table['dMarioMainMotion_'+name] if not name.startswith('dMario') else table[name]
+        full=name if name in table else 'dMarioMainMotion_'+name
+        code=table[full]
         i=0;loops=[]
-        while i<len(code):
+        while i<len(code) and (limit is None or clock<=limit):
             budget+=1
             if budget>4096:raise ValueError('Moveset event budget')
             op,args=code[i];args=[a.strip() for a in args.split(',') if a.strip()];i+=1
@@ -72,7 +76,10 @@ def timeline(table,name):
                 loops[-1][1]-=1
                 if loops[-1][1]:i=loops[-1][0]
                 else:loops.pop()
-            elif op=='ftMotionCommandGoto':run(args[0],depth+1);break
+            elif op=='ftMotionCommandGoto':
+                # Looping scripts jump back; only follow while inside the clip.
+                if limit is None or clock<=limit:run(args[0],depth+1)
+                break
             elif op in ('ftMotionCommandMakeAttackColl','ftMotionCommandMakeAttackCollScaled',
                         'ftMotionCommandClearAttackCollAll','ftMotionCommandClearAttackColl',
                         'ftMotionCommandRefreshAttackCollID','ftMotionCommandSetAttackCollDamage',
@@ -82,14 +89,14 @@ def timeline(table,name):
         else:
             # Adjacent command arrays can intentionally fall through, notably
             # FireballGround into the shared spawn script at 0x1688.
-            keys=list(table);full=name if name.startswith('dMario') else 'dMarioMainMotion_'+name
-            pos=keys.index(full)
+            if limit is not None and clock>limit:return
+            keys=list(table);pos=keys.index(full)
             if pos+1<len(keys):run(keys[pos+1],depth+1)
     if name:run(name)
     return events
 
 def frames(table,name,ticks):
-    events=timeline(table,name);active={};cache={};flags=0;epoch=0;cursor=0;output=[]
+    events=timeline(table,name,ticks);active={};cache={};flags=0;epoch=0;cursor=0;output=[]
     def enable(aid,values):
         nonlocal epoch
         group=values[1]

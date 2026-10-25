@@ -7,7 +7,7 @@ static CombatScene first_hit(MarioMove move,unsigned percent,int airborne)
 {
     CombatScene s;combat_demo_begin(&s,move);s.duel_mode=1;s.percent=percent;
     if(airborne) {s.target.state=SCENE_AIR;s.target.platform=-1;s.target.jumps_used=2;}
-    for(unsigned t=0;t<mario_moves[move].ticks && !s.hits;++t) {
+    for(unsigned t=0;t<fighter_mario.moves[move].ticks && !s.hits;++t) {
         s.attack_frame=(int)t;combat_resolve(&s);
     }
     assert(s.hits);return s;
@@ -17,8 +17,8 @@ static Versus strike(MarioMove move,unsigned percent)
     Versus v;versus_init(&v);
     CombatScene s;combat_demo_begin(&s,move);s.duel_mode=1;
     unsigned t=0;
-    while(t<mario_moves[move].ticks && !mario_move_frames[mario_moves[move].first+t].count)++t;
-    assert(t && t<mario_moves[move].ticks);
+    while(t<fighter_mario.moves[move].ticks && !fighter_mario.frames[fighter_mario.moves[move].first+t].count)++t;
+    assert(t && t<fighter_mario.moves[move].ticks);
     s.attack_frame=(int)t-1;v.fighter[0]=s;v.fighter[1].player=s.target;
     v.percent[1]=percent;
     CombatInput input[2]={{0},{0}};versus_step(&v,input);
@@ -36,7 +36,7 @@ int main(void)
     const SceneState aerial_states[]={SCENE_SPECIAL_HI,SCENE_SPECIAL_FALL,SCENE_CLIFF,SCENE_CLIMB};
     for(unsigned i=0;i<sizeof aerial_states/sizeof *aerial_states;++i) {
         CombatScene s;combat_demo_begin(&s,MOVE_JAB1);s.duel_mode=1;s.target.state=aerial_states[i];
-        for(unsigned t=0;t<mario_moves[MOVE_JAB1].ticks && !s.hits;++t) {
+        for(unsigned t=0;t<fighter_mario.moves[MOVE_JAB1].ticks && !s.hits;++t) {
             s.attack_frame=(int)t;combat_resolve(&s);
         }
         assert(s.hits && s.damage_pose==9 && s.damage_vy>0);
@@ -78,7 +78,7 @@ int main(void)
     for(unsigned t=0;t<15;++t)versus_step(&v,input);
     assert(versus_damage_pose(&v,1)==-1);
     v=strike(MOVE_USMASH,100);v.freeze=0;v.stun[1]=0;
-    v.reaction[1].age=mario_damage_ticks[v.reaction[1].pose];
+    v.reaction[1].age=fighter_mario.damage_ticks[v.reaction[1].pose];
     assert(versus_damage_pose(&v,1)==17); /* Strong launch continues as tumble. */
     input[1].attack=1;versus_step(&v,input);
     assert(v.fighter[1].attack_frame>=0 && versus_damage_pose(&v,1)==-1);

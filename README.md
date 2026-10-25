@@ -27,6 +27,8 @@ esos recursos y también se excluyen del repositorio y de la CI. Consultar
   1,25 MiB ([Prueba15](docs/huesos-prueba15.md), sin probar en DS).
 - Link convertido desde la ROM (modelo y 72 animaciones) en un visor del menú;
   aún no combate ([Prueba16](docs/link-prueba16.md), sin probar en DS).
+- Selección Mario/Link en el 1v1: física, golpes, giro y sonidos de Link
+  ([Prueba17](docs/link-prueba17.md), sin probar en DS).
 - Pruebas de lógica en PC, presupuestos DS y herramientas de inspección.
 - Pantalla de inicio y selección de modo (Prueba11, sin probar en DS);
   ver [docs/menu-prueba11.md](docs/menu-prueba11.md).

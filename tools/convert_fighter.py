@@ -22,8 +22,11 @@ import numpy as np
 from prepare_rom import EXPECTED_SHA1
 from convert_mario_model import Model
 from mario_animation import decode_script, evaluate
+from mario_moves import SPECS, frames as move_frames
+from fight_sounds import INDEX as SOUND
 from mario_skeleton import quantize, local_matrix, _float_matrix, TRANSLATE_SCALE
 import fighter_motions as fm
+import fight_sounds as fs
 
 ROOT=Path(__file__).resolve().parents[1]
 FILE_TABLE=0x1ac870;FILE_BASE=0x1b2c6c
@@ -43,13 +46,34 @@ COMMON_CLIPS=['Wait','WalkMiddle','Dash','Run','RunBrake','KneeBend','JumpF','Ju
     'DownAttackD','DownAttackU','Catch','CatchPull','ThrowF','ThrowB','CapturePulled','Attack11','Attack12',
     'AttackDash','AttackS3','AttackHi3','AttackLw3','AttackS4','AttackHi4','AttackLw4','AttackAirN',
     'AttackAirF','AttackAirB','AttackAirHi','AttackAirLw']
+# Move slots (src/moves.h order) -> motion, with fallbacks for fighters
+# lacking angled variants (Link has one forward tilt and one forward smash).
+SLOT_MOTIONS={'JAB1':['Attack11'],'JAB2':['Attack12'],'JAB3':['Attack13'],'DASH':['AttackDash'],
+    'FTILT_HI':['AttackS3Hi','AttackS3'],'FTILT':['AttackS3'],'FTILT_LO':['AttackS3Lw','AttackS3'],
+    'UTILT':['AttackHi3'],'DTILT':['AttackLw3'],'FSMASH_HI':['AttackS4Hi','AttackS4'],
+    'FSMASH_MHI':['AttackS4HiS','AttackS4'],'FSMASH':['AttackS4'],'FSMASH_MLO':['AttackS4LwS','AttackS4'],
+    'FSMASH_LO':['AttackS4Lw','AttackS4'],'USMASH':['AttackHi4'],'DSMASH':['AttackLw4'],
+    'NAIR':['AttackAirN'],'FAIR':['AttackAirF'],'BAIR':['AttackAirB'],'UAIR':['AttackAirHi'],'DAIR':['AttackAirLw'],
+    'GRAB':['Catch'],'THROW_F':['ThrowF'],'THROW_B':['ThrowB'],'FIRE':['SpecialN'],'FIRE_AIR':['SpecialAirN'],
+    'UP':['SpecialHi'],'TORNADO':['SpecialLw'],'TORNADO_AIR':['SpecialAirLw'],'GETUP_D':['DownAttackD'],
+    'GETUP_U':['DownAttackU'],'LEDGE_START':['CliffAttackQuick1'],'LEDGE':['CliffAttackQuick2'],
+    'LEDGE_SLOW_START':['CliffAttackSlow1'],'LEDGE_SLOW':['CliffAttackSlow2'],'GRAB_HOLD':['CatchPull'],
+    'UP_AIR':['SpecialAirHi']}
 FIGHTERS={
-    'mario':dict(Name='Mario',model=296,main='203_MarioMain.c',motion='202_MarioMainMotion.c',base_parts={},itemlight=None,tree=0x2200,matanim=0x2680,table='dFTMarioMotionDescs',
+    # spawn/grab: tree joints for projectile spawn and captured-fighter anchor
+    # (Mario: legacy mario_moves world[12]/world[24]; Link: itemlight 16, itemheavy 35).
+    'mario':dict(Name='Mario',spawn=12,grab=24,kind='FIGHTER_MARIO',attr='fighter_attr_mario',
+                 sounds=dict(jump='VOICE_JUMP',jump_air='VOICE_JUMP_AIR',land='LAND',damage='VOICE_DAMAGE',
+                             dead='VOICE_DEAD',dead_slam='DEAD_SLAM',smash=['VOICE_SMASH1','VOICE_SMASH2','VOICE_SMASH3']),
+                 model=296,main='203_MarioMain.c',motion='202_MarioMainMotion.c',base_parts={},itemlight=None,tree=0x2200,matanim=0x2680,table='dFTMarioMotionDescs',
                  special=['Attack13','SpecialN','SpecialAirN','SpecialHi','SpecialAirHi','SpecialLw','SpecialAirLw'],parts={}),
     # 324_LinkModel.c: dLinkModel_JointTree @0x3AE8; anim table +0x5B8 (225_LinkMain.c).
     # base_parts: ftManagerInitFighter (ftmanager.c:639-644) after tree defaults;
     # itemlight: joint_itemlight_id used by SetModelPartID(-2, ...).
-    'link':dict(Name='Link',model=324,main='225_LinkMain.c',motion='224_LinkMainMotion.c',base_parts={21:-1,19:0},itemlight=16,tree=0x3AE8,matanim=0x3AE8+0x5B8,table='dFTLinkMotionDescs',
+    'link':dict(Name='Link',spawn=12,grab=31,kind='FIGHTER_LINK',attr='fighter_attr_link',
+                sounds=dict(jump='LINK_JUMP',jump_air='LINK_JUMP_AIR',land='LINK_LAND',damage='LINK_DAMAGE',
+                            dead='LINK_DEAD',dead_slam='LINK_DEAD_SLAM',smash=['LINK_SMASH1','LINK_SMASH2','LINK_SMASH3']),
+                model=324,main='225_LinkMain.c',motion='224_LinkMainMotion.c',base_parts={21:-1,19:0},itemlight=16,tree=0x3AE8,matanim=0x3AE8+0x5B8,table='dFTLinkMotionDescs',
                 special=['Attack13','Attack100Start','Attack100Loop','Attack100End','SpecialHi','SpecialHiEnd',
                          'SpecialAirHi','SpecialN','SpecialNGet','SpecialNEmpty','SpecialAirN','SpecialLw','SpecialAirLw'],
                 parts={}),
@@ -158,7 +182,7 @@ def plan_joints(parents,has_geometry):
 def script_tables(Name):
     text=fm.us_source((fm.UPSTREAM/f'src/relocData/{FIGHTERS[Name.lower()]["motion"]}').read_text())
     return {n:re.findall(r'(ft\w+)\(([^()]*)\)',body)
-            for n,body in re.findall(r'ftMotionCommand\s+(\w+)\[\]\s*=\s*\{(.*?)\n\};',text,re.S)}
+            for n,body in re.findall(r'(?:ftMotionCommand|u32)\s+(\w+)\[\]\s*=\s*\{(.*?)\n\};',text,re.S)}
 
 PART_OPS=('ftMotionCommandSetModelPartID','ftMotionCommandResetModelPartAll','ftMotionCommandHideModelPartAll')
 
@@ -177,7 +201,7 @@ def part_events(tables,symbol,limit):
                 if following>=len(keys):return 'end'
                 name=keys[following];code=list(tables[name]);i=0;continue
             budget+=1
-            if budget>8192:raise ValueError('Motion script budget')
+            if budget>8192:return 'end'  # loop without waits (e.g. while held): no more part changes
             op,args=code[i];args=[a.strip() for a in args.split(',') if a.strip()];i+=1
             if op=='ftMotionCommandEnd':return 'end'
             if op=='ftMotionCommandReturn':return 'return'
@@ -214,6 +238,66 @@ def dl_address(symbol):
     if not m:raise ValueError('Unrecognized display list '+symbol)
     return m[1],int(m[2],16) if m[2] else int(m[3],16)+int(m[4],16)
 
+def throw_hits(cfg,motions):
+    """FTThrowHitDesc row 0 named by SetThrow in the ThrowF/ThrowB scripts."""
+    text=fm.us_source((fm.UPSTREAM/f'src/relocData/{cfg["motion"]}').read_text());out=[]
+    for motion in ('ThrowF','ThrowB'):
+        body=re.search(r'(?:ftMotionCommand|u32)\s+'+motions[motion]['script']+r'\[\]\s*=\s*\{(.*?)\n\};',text,re.S)[1]
+        desc=re.search(r'SetThrow\(\(u32\)(\w+)\)',body)[1]
+        row=re.search(r'FTThrowHitDesc '+desc+r'\[\]\s*=\s*\{\s*\{([^}]*)\}',text)[1]
+        status,damage,angle,scale,weight,base,_=(int(x,0) for x in row.split(','))
+        a=math.radians(angle)
+        out.append([0,0,0,damage,angle,scale,weight,base,0,3,round(math.cos(a)*4096),round(math.sin(a)*4096),255])
+    return out
+
+def export_moves(name,cfg,clips,float_frames,parents,motions,tables):
+    """Move slots for combat.c: per-tick hitboxes/flags/sounds from the motion
+    scripts (mario_moves.frames) with hit centres from the bone pose; same
+    layout as the legacy mario_moves.c."""
+    position={c['motion']:i for i,c in enumerate(clips)}
+    unique={c['index']:c for c in clips if 'same' not in c}
+    hits=[];allframes=[];descs=[];identity=[0,0,0,0,0,0,1,1,1]
+    for slot,_,_ in SPECS:
+        motion=next(m for m in SLOT_MOTIONS[slot] if motions.get(m,{}).get('file'))
+        entry=clips[position[motion]];index=entry.get('index',entry.get('same'));src=unique[index]
+        values,root=float_frames[index];ticks=src['ticks']
+        script=None if slot=='GRAB_HOLD' else motions[motion]['script']
+        sequence=move_frames(tables,script,ticks)
+        first=len(allframes)
+        for t,frame in enumerate(sequence):
+            rows=values[min(t,len(values)-1)].copy()
+            if root==2:rows[len(parents)]=identity  # movement TransN: gameplay moves the fighter
+            w=world(rows,parents,_float_matrix);start=len(hits)
+            for hit in frame['hits']:
+                v=hit['v'];joint=v[2];pt=np.array([*v[7:10],1.0])
+                if joint>=4:pt=w[joint-4]@pt
+                elif joint!=0:raise ValueError('Unsupported attack joint')
+                angle=v[10];a=math.radians(angle if angle!=361 else 0)
+                hits.append([round(pt[2]),round(pt[1]),round(v[6]*.5),v[3],angle,v[11],v[12],v[17],hit['strike'],v[13],
+                             round(math.cos(a)*4096),round(math.sin(a)*4096),fs.hit_sound(v[16],v[15])])
+            spawn=w[cfg['spawn']]@np.array([0,0,0,1.0]);anchor=w[cfg['grab']]@np.array([0,0,0,1.0])
+            allframes.append([start,len(hits)-start,frame['flags'],round(spawn[2]),round(spawn[1]),
+                              round(anchor[2]),round(anchor[1]),'{%d,%d}'%tuple(frame['sounds'])])
+        descs.append(f'{{"{slot}",{position[motion]},{ticks},{first}}}')
+    damage=['DamageHi1','DamageHi2','DamageHi3','DamageN1','DamageN2','DamageN3','DamageLw1','DamageLw2','DamageLw3',
+            'DamageAir1','DamageAir2','DamageAir3','DamageFlyHi','DamageFlyN','DamageFlyLw','DamageFlyTop','DamageFlyRoll']
+    tick_of=lambda m:unique[clips[position[m]].get('index',clips[position[m]].get('same'))]['ticks']
+    clip=lambda m:position[m]
+    clipmap=[clip(m) for m in ['Wait','WalkMiddle','JumpF','Fall','LandingLight','CliffWait','CliffCatch','JumpAerialF',
+             'JumpAerialB','FallSpecial','Dash','Run','RunBrake','CapturePulled','DamageFall']]
+    snd=cfg['sounds'];sounds=[SOUND[snd[k]] for k in ('jump','jump_air','land','damage','dead','dead_slam')]
+    smash='{'+','.join(str(SOUND[x]) for x in snd['smash'])+'}'
+    throws=throw_hits(cfg,motions)
+    lines=['static const MoveHit move_hits[]={']+['{'+','.join(map(str,h))+'},' for h in hits]+['};']
+    lines+=['static const MoveFrame move_frames[]={']+['{'+','.join(map(str,f))+'},' for f in allframes]+['};']
+    lines+=['static const MoveDesc move_descs[MOVE_COUNT]={'+','.join(descs)+'};']
+    lines+=['static const unsigned damage_ticks[17]={'+','.join(str(tick_of(m)) for m in damage)+'};']
+    lines+=[f'const Fighter fighter_{name}={{"{cfg["Name"]}",{cfg["kind"]},&{cfg["attr"]},move_hits,move_frames,move_descs,damage_ticks,',
+            '    {'+','.join(map(str,clipmap))+',{'+','.join(str(clip(m)) for m in damage)+'}},',
+            '    {'+','.join(map(str,sounds))+','+smash+'},',
+            '    {'+','.join('{'+','.join(map(str,h))+'}' for h in throws)+'}};']
+    return lines
+
 def convert(name,check_mario=False):
     cfg=FIGHTERS[name];Name=cfg['Name']
     rom=(ROOT/'build/rom/baserom.us.z64').read_bytes()
@@ -232,7 +316,11 @@ def convert(name,check_mario=False):
     descs=model_parts(Name);ids=fm.file_ids();tables=script_tables(Name);motions=fm.motions(Name,cfg['table'])
     base={j:(0 if model.joints[j-4]['display_list'] is not None else -1) for j in descs};base.update(cfg['base_parts'])
     tree_dl={j['display_list']:j['index'] for j in model.joints if j['display_list'] is not None}
-    wanted=COMMON_CLIPS+cfg['special'];used={(j,i) for j,i in base.items() if i>=0}
+    wanted=COMMON_CLIPS+cfg['special']
+    for options in SLOT_MOTIONS.values():
+        for motion in options:
+            if motions.get(motion,{}).get('file') and motion not in wanted:wanted.append(motion)
+    used={(j,i) for j,i in base.items() if i>=0}
     for motion in wanted:
         for _,op,args in part_events(tables,motions[motion]['script'],10000):
             if op.endswith('SetModelPartID'):
@@ -272,8 +360,8 @@ def convert(name,check_mario=False):
     while np.abs(local[:,:3]).max()*4096/divisor>32767:divisor*=2
     fixed=np.rint(local[:,:3]*4096/divisor)
     restored=np.c_[fixed*divisor/4096,np.ones(len(local))]
-    roots=hidden_parts(Name);clips=[];seen={};worst=0.0;total=0
-    lines=['/* Generated from the user ROM; do not distribute. */','#include <stddef.h>','#include "fighter_model.h"']
+    roots=hidden_parts(Name);clips=[];seen={};worst=0.0;total=0;float_frames={}
+    lines=['/* Generated from the user ROM; do not distribute. */','#include <stddef.h>','#include "fighter_model.h"','#include "fighter.h"']
     for motion in wanted:
         info=motions[motion]
         if info['file'] is None:raise ValueError(f'{Name} {motion} has no animation')
@@ -310,6 +398,7 @@ def convert(name,check_mario=False):
         if events:lines.append(f'static const uint32_t parts_{index}[]={{'+','.join(f'{t},{m}' for t,m in changes)+'};')
         size=flat.shape[1]*2+len(varying)*(2+2*len(q))+8*len(changes)*bool(events);total+=size
         seen[key]=index
+        float_frames[index]=(values,root)
         clips.append(dict(motion=motion,index=index,file=info['file'],flags=info['flags'],ticks=ticks,stored=len(q),
                           loop=looping,varying=len(varying),bytes=size,max_world_error=error,root=root,
                           part_changes=len(changes) if events else 0,
@@ -344,6 +433,14 @@ def convert(name,check_mario=False):
                  f'textures,{len(model.textures)},local_map,locals,clips,{len(clips)},joints,parents,{len(depths)},'
                  f'{len(slots)},{scale},{{0,0,0}},triangle_parts,{base_mask}u,{512//divisor}}};')
     lines.append(f'const char *const *{name}_clip_names=clip_names;')
+    if name=='mario':
+        # Fireball 16x16 CI4 sprite of MarioSpecial3 (file 297), as mario_animation.py.
+        raw,_=rom_file(rom,297,decoder,scratch);palette=struct.unpack_from('>16H',raw,0x30);pixels=[]
+        for byte in raw[0x58:0x58+128]:
+            for i in (byte>>4,byte&15):
+                c=palette[i];pixels.append((c>>11&31)|((c>>6&31)<<5)|((c>>1&31)<<10)|(32768 if c&1 else 0))
+        lines.append('const uint16_t mario_fireball_pixels[256] __attribute__((aligned(4)))={'+','.join(map(str,pixels))+'};')
+    lines+=export_moves(name,cfg,clips,float_frames,parents,motions,tables)
     (out/f'{name}_model.c').write_text('\n'.join(lines)+'\n')
     texture_bytes=sum(t['padded_width']*t['padded_height']*2 for t in model.textures)
     report=dict(fighter=Name,model_file=cfg['model'],joints=len(depths),slots=len(slots),triangles=len(model.triangles),
@@ -353,7 +450,9 @@ def convert(name,check_mario=False):
                 clips=[{k:v for k,v in c.items() if k!='channels'} for c in clips])
     (out/f'{name}-info.json').write_text(json.dumps(report,indent=2))
     header=[f'#ifndef SSB_{name.upper()}_MODEL_H',f'#define SSB_{name.upper()}_MODEL_H','#include "fighter_model.h"',
-            f'extern const FighterModel {name}_model;',f'extern const char *const *{name}_clip_names;']
+            '#include "fighter.h"',f'extern const FighterModel {name}_model;',f'extern const char *const *{name}_clip_names;',
+            f'extern const Fighter fighter_{name};']
+    if name=='mario':header.append('extern const uint16_t mario_fireball_pixels[256];')
     header+=[f'#define {name.upper()}_CLIP_{c["motion"].upper()} {i}' for i,c in enumerate(clips)]
     (out/f'{name}_model.h').write_text('\n'.join(header+['#endif'])+'\n')
     print(f'{Name}: {len(depths)} joints ({len(slots)} slots), {len(model.triangles)} triangles, '
