@@ -95,3 +95,34 @@
   script events; smash voice rotates instead of random. Keep fight_sound.h and
   tools/fight_sounds.py in the same order. Not yet heard on DS. See
   docs/sonido-prueba14.md and docs/estudio-sonido.md.
+- Prueba15 (step 1 of adding Link) renders Mario from a bone-pose bank:
+  per-tick local joint channels (only varying ones stored), rebuilt with DS
+  matrix commands into stack slots 3..29 and rigid per-vertex glRestoreMatrix.
+  232563 bytes vs 1.25 MiB; ARM9 static 823276. Max 0.35 units offline, 1.33
+  in host fixed-point emulation (bound 2.1). Build with --skeletal-poses; keep
+  compact/16-bit options. Not yet seen in emulator or DS. Next: generalize the
+  converter for Link's model/animations. See docs/huesos-prueba15.md.
+- Prueba16 (step 2 of Link) adds tools/convert_fighter.py: table-driven
+  (FTMotionDesc in ftdata.c, some entries unbraced; FTHiddenPart decides which
+  joints each animation table lists). It reproduces Mario's Prueba15 bone bank
+  exactly. Link: tree @0x3AE8, 32 joints, 19 matrix slots, 72 clips, 248176
+  pose bytes, 49920 texture bytes, shown in a menu viewer via
+  platform/nds/fighter_render.c. Model-part swaps from motion scripts are per-clip
+  (tick, mask) lists; movement-only TransN (root 2) is drawn only on request
+  (viewer ledge clips). Faces, items and Link combat are pending. Not yet seen in emulator/DS.
+  See docs/link-prueba16.md.
+- Prueba17 (step 3 of Link): src/fighter.h holds per-fighter data; physics,
+  combat and versus read it (MotionScene.attr, CombatScene.fighter). Attributes
+  are copied FTAttributes (test_fighter_attr.py). convert_fighter.py emits moves,
+  clip map, sounds and throws; for Mario they equal the legacy mario_moves.c and
+  all recorded Mario traces stay byte-identical (check them on every change).
+  The 1v1 links only generic models; legacy Mario remains for old demos via
+  src/fighter_mario_legacy.c. Link: spin attack (ground/air), sword hits and
+  sounds; boomerang/bomb pending (Prueba18). Not yet seen in emulator/DS.
+  See docs/link-prueba17.md.
+- Prueba18: crouch (SCENE_SQUAT, MotionScene.squat_held set by combat) for both
+  fighters; Link boomerang (spawn flag0 tick26, decay/return/homing by fixed-angle
+  rotation, catch, 9/8 dmg) and bomb item (pull tick29, held, LightThrow table x.6,
+  release tick8, fuse 300, contact/explosion) in combat.c, reduced: no self-damage,
+  pickup, reflection or map collision for the boomerang; provisional bomb drawing.
+  Mario traces stay byte-identical. See docs/link-prueba18.md.

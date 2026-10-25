@@ -30,7 +30,9 @@ def main():
     report = {'demo':args.demo, 'arm9_static_bytes':sum(sizes), 'arm9_static_budget':2621440,
               'shared_texture_bytes':stage_textures+512+sum(t['padded_width']*t['padded_height']*2 for t in mesh['textures']),
               'texture_capacity_bytes':texture_capacity, 'instances':instances,
-              'shared_pose_bytes':sum(c['compact_pose_bytes'] if info.get('compact_poses') else c['frames']*c.get('pose_vertices',mesh['vertices_expanded'])*6 for c in clips),
+              'shared_pose_bytes':json.loads((ROOT/'build/model/skeleton-info.json').read_text())['bytes'] if info.get('skeletal_poses') else
+                  sum(c['compact_pose_bytes'] if info.get('compact_poses') else c['frames']*c.get('pose_vertices',mesh['vertices_expanded'])*6 for c in clips),
+              'skeletal_poses':info.get('skeletal_poses',False),
               'compact_poses':info.get('compact_poses',False),
               'polygons_with_stage_reserve':instances*mesh['triangles']+stage_poly+projectile_count,
               'vertices_with_stage_reserve':instances*mesh['vertices_expanded']+stage_vertices+projectile_count*4,
@@ -38,12 +40,23 @@ def main():
               'limits':['Static ELF is not peak main RAM','Stage reserve must be revised if stage geometry changes',
                         'Submitted geometry differs from clipped geometry','Runtime GPU/CPU time needs hardware measurement']}
     if report['arm9_static_bytes']>report['arm9_static_budget']: raise ValueError('ARM9 static RAM budget exceeded')
+    if 'build/fighters/mario/mario_model.c' in info['sources']:
+        # Prueba17+: both selectable fighters are generic converted models that
+        # share the A+B texture banks; worst case is Link vs Link geometry.
+        fighters=[json.loads((ROOT/f'build/fighters/{f}/{f}-info.json').read_text()) for f in ('mario','link')]
+        report['shared_texture_bytes']=stage_textures+512+sum(f['texture_bytes'] for f in fighters)
+        report['shared_pose_bytes']=sum(f['pose_bytes'] for f in fighters)
+        report['fighters']={f['fighter']:dict(pose_bytes=f['pose_bytes'],texture_bytes=f['texture_bytes'],
+                            triangles=f['triangles']) for f in fighters}
+        worst=max(fighters,key=lambda f:f['triangles'])
+        report['polygons_with_stage_reserve']=2*worst['triangles']+stage_poly+projectile_count
+        report['vertices_with_stage_reserve']=2*worst['draw_vertices']+stage_vertices+projectile_count*4
     if args.demo=='versus' and info.get('audio_enabled',True):
         audio=json.loads((ROOT/'build/audio/audio-info.json').read_text())
         report['shared_audio_pcm_bytes']=audio['bytes']
         report['audio_channels']=audio['channel_limit']
-        # Original ROM effects/voices, PCM8 16 kHz. Revisit if more fighters add voices.
-        if audio['bytes']>262144:raise ValueError('Audio bank exceeded 256 KiB')
+        # Mario + Link effects/voices, PCM8 16 kHz (~314 KiB). IMA-ADPCM would halve it.
+        if audio['bytes']>400*1024:raise ValueError('Audio bank exceeded 400 KiB')
     elif args.demo=='versus':
         report['shared_audio_pcm_bytes']=0;report['audio_channels']=0
     if report['shared_texture_bytes']>report['texture_capacity_bytes']: raise ValueError('Texture banks exceeded')

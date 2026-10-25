@@ -120,7 +120,7 @@ def export_clips(root, model, center, scale, output):
     # Track indices: RPY, translate interpolation, XYZ, scale XYZ.
     fields = {0:3, 1:4, 2:5, 4:0, 5:1, 6:2, 7:6, 8:7, 9:8}
     lines = ['/* Generated from the user ROM. */', '#include "mario_mesh.h"']
-    clips = [];bones={};audit_poses={}
+    clips = [];bones={};audit_poses={};skeleton={}
     for index, asset in enumerate(manifest['clips']):
         data = (root / 'build/assets/us' / asset['file']).read_bytes()
         if hashlib.sha256(data).hexdigest() != asset['sha256']:
@@ -162,12 +162,15 @@ def export_clips(root, model, center, scale, output):
         sample_frames=list(range(0,frames,step))
         if not looping and sample_frames[-1]!=frames-1:sample_frames.append(frames-1)
         frames=len(sample_frames)
-        lines.append(f'#ifndef MARIO_COMPACT_POSES\nstatic const int16_t pose_{index}[] = {{')
+        # The bone renderer (MARIO_SKELETAL) links mario_skeleton.c instead.
+        lines.append(f'#ifdef MARIO_SKELETAL\n#define pose_{index} ((const MarioPose *)0)\n#elif !defined(MARIO_COMPACT_POSES)\nstatic const int16_t pose_{index}[] = {{')
         lower, upper = np.ones(3)*np.inf, np.ones(3)*-np.inf
         first = None
         delta = 0
         sampled=[]
         bones[asset['id']]=[]
+        # Local channels for the bone renderer: every tick, joint 25 = prefix.
+        skeleton[asset['id']]=dict(frames=[],single=asset['id']==573)
         for frame in range(ticks):
             world, stack = [], {}
             prefix=np.eye(4)
@@ -179,6 +182,9 @@ def export_clips(root, model, center, scale, output):
                     value=evaluate(auxiliary[0][track],min(frame,auxiliary[1]))
                     if value is not None:values[field]=value
                 prefix=transform(values)
+                prefix_values=values
+            else:prefix_values=[0,0,0,0,0,0,1,1,1]
+            local_values=[]
             for joint, values in enumerate(defaults):
                 values = list(values)
                 if joint < len(scripts) and scripts[joint] is not None:
@@ -188,12 +194,15 @@ def export_clips(root, model, center, scale, output):
                         value = evaluate(tracks[track], sample_time)
                         if value is not None:
                             values[field] = value
+                local_values.append(values)
                 local = transform(values)
                 depth = model.joints[joint]['depth']
                 matrix = stack[depth-1] @ local if depth else prefix @ local
                 stack[depth] = matrix
                 world.append(matrix)
             bones[asset['id']].append(world)
+            if frame==0 or not skeleton[asset['id']]['single']:
+                skeleton[asset['id']]['frames'].append(local_values+[prefix_values])
             if frame not in sample_frames:continue
             posed = np.empty((len(vertices), 3))
             for joint, matrix in enumerate(world):
@@ -254,4 +263,6 @@ def export_clips(root, model, center, scale, output):
     np.savez_compressed(output/'animation-audit.npz',**audit_poses)
     from mario_moves import export
     export(root,output,clips,bones)
+    from mario_skeleton import export_skeleton
+    export_skeleton(output,model,vertices,mapping,clips,skeleton,center,scale)
     print('Original clips:', [(c['name'], c['frames']) for c in clips])

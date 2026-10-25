@@ -3,8 +3,8 @@
 #include "special_hi.h"
 #include <string.h>
 
-/* Mario's numeric attributes: relocData/203_MarioMain.c at revision
- * 572a747d8171137718fad472c5d7473dc7309ffd.
+/* Numeric attributes per fighter (fighter_attr.c, FTAttributes at revision
+ * 572a747d8171137718fad472c5d7473dc7309ffd); Mario by default.
  * Stage solver, turning, landing duration and respawn are provisional.
  * No dash, fastfall, full combat or GObj scheduling. */
 
@@ -27,6 +27,7 @@ void scene_init_stage(MotionScene *s, StageId stage)
     s->ignored_platform = -1;
     s->facing=1;
     s->landing_ticks=3;
+    s->attr=&fighter_attr_mario;
 }
 
 int scene_special_hi(MotionScene *s,int stick_x)
@@ -45,6 +46,20 @@ int scene_special_hi(MotionScene *s,int stick_x)
     s->platform=-1;enter(s,SCENE_SPECIAL_HI);return 1;
 }
 
+/* US FTLINK_SPINATTACK_*: launch 69, gravity x.23 until motion flag1 (tick 12
+ * of dLinkMainMotion_UpSpecial), aerial drift x.5, freefall drift x.6. */
+#define LINK_SPIN_VEL_Y 69.0f
+#define LINK_SPIN_GRAVITY_MUL .23f
+#define LINK_SPIN_FULL_GRAVITY_TICK 12
+#define LINK_SPIN_DRIFT_MUL .5f
+int scene_special_hi_rise(MotionScene *s,unsigned ticks)
+{
+    if(s->special_used || s->state!=SCENE_AIR)return 0;
+    s->special_air=1;s->special_tilt=0;s->special_used=1;++s->special_uses;
+    s->air_jump=0;s->jumps_used=2;s->vy=LINK_SPIN_VEL_Y;s->special_ticks=ticks;
+    s->platform=-1;enter(s,SCENE_SPECIAL_HI);return 1;
+}
+
 static void cliff_drop(MotionScene *s)
 {
     s->cliff_cooldown=30;s->platform=-1;s->vx=0;s->vy=-2;
@@ -55,7 +70,7 @@ void scene_drop_through(MotionScene *s)
 {
     if(s->state==SCENE_LAND && s->landing_ticks==25)return;
     if(s->state==SCENE_CLIFF) {cliff_drop(s);return;}
-    if ((s->state==SCENE_WAIT || s->state==SCENE_WALK || s->state==SCENE_LAND) && s->platform > 0) {
+    if ((s->state==SCENE_WAIT || s->state==SCENE_WALK || s->state==SCENE_LAND || s->state==SCENE_SQUAT) && s->platform > 0) {
         s->ignored_platform = s->platform;
         s->drop_ticks = 12;
         s->platform = -1;
@@ -67,12 +82,13 @@ void scene_drop_through(MotionScene *s)
 
 const char *scene_state_name(SceneState state)
 {
-    static const char *names[] = {"WAIT", "WALK", "KNEE", "AIR", "LAND", "CLIFF", "CLIMB", "UP-B", "FREEFALL"};
+    static const char *names[] = {"WAIT", "WALK", "KNEE", "AIR", "LAND", "CLIFF", "CLIMB", "UP-B", "FREEFALL", "SQUAT"};
     return (unsigned)state < sizeof names / sizeof *names ? names[state] : "INVALID";
 }
 
 void scene_step(MotionScene *s, SceneInput input)
 {
+    const FighterAttributes *a=s->attr;
     if (input.stick_x > 80) input.stick_x = 80;
     if (input.stick_x < -80) input.stick_x = -80;
     int pressed = input.jump_held && !s->jump_was_held;
@@ -101,12 +117,20 @@ void scene_step(MotionScene *s, SceneInput input)
         if(t>=12) {s->platform=0;s->vx=s->vy=0;s->jumps_used=0;s->air_jump=0;s->special_used=0;s->landing_ticks=3;enter(s,SCENE_LAND);}
         return;
     }
-    if(s->state!=SCENE_AIR && s->state!=SCENE_SPECIAL_HI && s->state!=SCENE_SPECIAL_FALL && (input.stick_x>=8 || input.stick_x<=-8))
+    if(s->state!=SCENE_AIR && s->state!=SCENE_SPECIAL_HI && s->state!=SCENE_SPECIAL_FALL && s->state!=SCENE_SQUAT &&
+       (input.stick_x>=8 || input.stick_x<=-8))
         s->facing=input.stick_x>0?1:-1;
 
     switch (s->state) {
+    case SCENE_SQUAT:
+        /* Squat/SquatWait while down is held; jump or release leaves it. */
+        ++s->state_ticks;
+        if(pressed) {s->short_hop=0;enter(s,SCENE_KNEE);}
+        else if(!s->squat_held)enter(s,SCENE_WAIT);
+        break;
     case SCENE_WAIT:
     case SCENE_WALK:
+        if(s->squat_held && !pressed) {enter(s,SCENE_SQUAT);break;}
         if (pressed) {
             s->short_hop = 0;
             enter(s, SCENE_KNEE);
@@ -114,20 +138,20 @@ void scene_step(MotionScene *s, SceneInput input)
             if (input.stick_x >= 8 || input.stick_x <= -8) {
                 enter(s, SCENE_WALK);
                 float speed = s->vx < 0.0f ? -s->vx : s->vx;
-                speed = motion_walk_speed(speed, input.stick_x, 0.3f, 1.5f);
+                speed = motion_walk_speed(speed, input.stick_x, a->walk_speed_mul, a->traction);
                 s->vx = input.stick_x < 0 ? -speed : speed;
             } else {
                 enter(s, SCENE_WAIT);
-                s->vx = motion_ground_friction(s->vx, 6.0f);
+                s->vx = motion_ground_friction(s->vx, a->traction*4);
             }
         }
         break;
     case SCENE_KNEE:
         ++s->state_ticks;
-        if (released && s->state_ticks <= 3) s->short_hop = 1;
-        if (s->state_ticks >= 3) {
-            s->vy = motion_button_jump_y(input.stick_x, s->short_hop) * 0.7f + 26.0f;
-            s->vx = input.stick_x * 0.35f;
+        if (released && s->state_ticks <= a->kneebend_ticks) s->short_hop = 1;
+        if (s->state_ticks >= a->kneebend_ticks) {
+            s->vy = motion_button_jump_y(input.stick_x, s->short_hop) * a->jump_height_mul + a->jump_height_base;
+            s->vx = input.stick_x * a->jump_vel_x;
             s->platform = -1;
             s->jumps_used=1;s->air_jump=0;
             enter(s, SCENE_AIR);
@@ -137,11 +161,11 @@ void scene_step(MotionScene *s, SceneInput input)
         ++s->state_ticks;
         if(s->air_jump)++s->air_jump_ticks;
         if(pressed && s->jumps_used<2) {
-            /* ftCommonJumpAerialSetStatus, Mario attrs: 80*.7+26, *.9;
-             * horizontal impulse stick*.35, forward/back threshold -10. */
+            /* ftCommonJumpAerialSetStatus: (80*height_mul+base)*aerial height;
+             * horizontal impulse stick*jumpaerial_vel_x, forward/back threshold -10. */
             s->air_jump=input.stick_x*s->facing>=-10?1:2;
             s->air_jump_ticks=0;
-            s->vy=(80*.7f+26)*.9f;s->vx=input.stick_x*.35f;
+            s->vy=(80*a->jump_height_mul+a->jump_height_base)*a->jumpaerial_height;s->vx=input.stick_x*a->jumpaerial_vel_x;
             s->jumps_used=2;++s->air_jumps;
         }
         /* Preserve the prototype's immediate air steering/turning. Select
@@ -154,7 +178,14 @@ void scene_step(MotionScene *s, SceneInput input)
         break;
     case SCENE_SPECIAL_HI:
         ++s->state_ticks;
-        if(s->state_ticks<=SPECIAL_HI_TICKS) {
+        if(s->kind!=FIGHTER_MARIO) {
+            if(s->state_ticks<=s->special_ticks) {
+                float g=s->state_ticks>=LINK_SPIN_FULL_GRAVITY_TICK?a->gravity:a->gravity*LINK_SPIN_GRAVITY_MUL;
+                s->vy=motion_gravity(s->vy,g,a->tvel_base);
+                s->vx=motion_air_accel(s->vx,input.stick_x,8,a->air_accel*LINK_SPIN_DRIFT_MUL,a->air_speed_max_x);
+                s->vx=motion_air_friction(s->vx,a->air_friction);
+            } else enter(s,SCENE_SPECIAL_FALL);
+        } else if(s->state_ticks<=SPECIAL_HI_TICKS) {
             if(s->state_ticks<=6 && s->special_air) {
                 s->vy=motion_gravity(s->vy,.5f,44);s->vx=motion_air_friction(s->vx,.2f);
             } else {
@@ -173,17 +204,18 @@ void scene_step(MotionScene *s, SceneInput input)
         break; /* Handled before ordinary physics. */
     }
 
-    if (s->state == SCENE_KNEE || s->state == SCENE_LAND)
-        s->vx = motion_ground_friction(s->vx, 6.0f);
+    /* Ground friction: default material 4 x traction (ftPhysicsApplyGroundVelFriction). */
+    if (s->state == SCENE_KNEE || s->state == SCENE_LAND || s->state == SCENE_SQUAT)
+        s->vx = motion_ground_friction(s->vx, a->traction*4);
     if (s->state == SCENE_AIR) {
-        s->vy = motion_gravity(s->vy, 2.4f, 44.0f);
-        s->vx = motion_air_accel(s->vx, input.stick_x, 8, 0.025f, 30.0f);
-        s->vx = motion_air_friction(s->vx, 0.2f);
+        s->vy = motion_gravity(s->vy, a->gravity, a->tvel_base);
+        s->vx = motion_air_accel(s->vx, input.stick_x, 8, a->air_accel, a->air_speed_max_x);
+        s->vx = motion_air_friction(s->vx, a->air_friction);
     }
     if(s->state==SCENE_SPECIAL_FALL) {
-        s->vy=motion_gravity(s->vy,2.4f,44);
-        s->vx=motion_air_accel(s->vx,input.stick_x,8,.025f,18);
-        s->vx=motion_air_friction(s->vx,.2f);
+        s->vy=motion_gravity(s->vy,a->gravity,a->tvel_base);
+        s->vx=motion_air_accel(s->vx,input.stick_x,8,a->air_accel,a->fall_special_speed);
+        s->vx=motion_air_friction(s->vx,a->air_friction);
     }
 
     float previous_y = s->y, previous_x = s->x;
@@ -245,7 +277,9 @@ void scene_step(MotionScene *s, SceneInput input)
         unsigned respawns = s->respawns + 1, landings = s->landings;
         int held = s->jump_was_held;
         StageId stage = s->stage;
+        const FighterAttributes *attr = s->attr;
         scene_init_stage(s, stage);
+        s->attr = attr;
         s->tick = tick;
         s->landings = landings;
         s->respawns = respawns;

@@ -19,8 +19,14 @@ EXPECTED = '157287d186182c4966a4019b478668e364c7f23624bf54ed598be2a170be526f'
 
 
 class Model:
-    def __init__(self, data, internal_chain_word=2):
+    def __init__(self, data, internal_chain_word=2, tree=0x2200, matanim=0x2680, parts=None):
+        # FTCommonPartContainer hi-detail JointTree and its AObjEvent32 table.
         self.data = data
+        self.tree = tree
+        self.matanim = matanim
+        # Optional {joint: display list offset or None} model-part override.
+        self.parts = parts or {}
+        self.world = []
         self.pointers = {}
         word = internal_chain_word
         while word != 0xffff:
@@ -62,7 +68,7 @@ class Model:
 
     def colors(self, joint):
         dispatch = self.ptr(joint * 4)
-        anim = self.ptr(0x2680 + joint * 4)
+        anim = self.ptr(self.matanim + joint * 4)
         result = []
         if dispatch is None:
             return result
@@ -179,9 +185,9 @@ class Model:
                                   'padded_width': pw, 'padded_height': ph, 'param': param, 'pixels': padded})
         return self.texture_keys[key]
 
-    def display_list(self, offset, matrix, joint):
+    def display_list(self, offset, matrix, joint, material_joint=None):
         cache = self.cache
-        colors = self.colors(joint)
+        colors = self.colors(joint if material_joint is None else material_joint)
         color = [255, 255, 255, 255]
         light = np.array([.25, .65, 1.0])
         light /= np.linalg.norm(light)
@@ -266,15 +272,15 @@ class Model:
                 self.tile_origin = np.array([(w0 >> 12) & 4095, w0 & 4095]) / 4
                 self.tile_extent = tuple(int(x) for x in
                                          ((np.array([(w1 >> 12) & 4095, w1 & 4095]) / 4) - self.tile_origin + 1))
-            elif opcode not in (0xe7, 0xdb, 0xe3, 0xfc, 0xe8, 0xf5, 0xe6,
+            elif opcode not in (0xe2, 0xf7, 0xf8, 0xf9, 0xe7, 0xdb, 0xe3, 0xfc, 0xe8, 0xf5, 0xe6,
                                 0xf0, 0xd7, 0xf2, 0xfd, 0xf3, 0xd9, 0xfb):
                 raise ValueError(f'Unsupported F3DEX2 command {opcode:#x} at {offset:#x}')
             offset += 8
 
     def convert(self):
         stack = {}
-        for joint in range(32):
-            offset = 0x2200 + joint * 44
+        for joint in range(40):
+            offset = self.tree + joint * 44
             fields = struct.unpack_from('>II9f', self.data, offset)
             if fields[0] == 18:
                 break
@@ -289,7 +295,8 @@ class Model:
             local[:3, 3] = [tx, ty, tz]
             world = stack[depth - 1] @ local if depth else local
             stack[depth] = world
-            dl = self.ptr(offset + 4)
+            self.world.append(world)
+            dl = self.parts[joint] if joint in self.parts else self.ptr(offset + 4)
             self.joints.append({'index': joint, 'depth': depth, 'display_list': dl})
             if dl is not None:
                 self.display_list(dl, world, joint)
@@ -336,6 +343,14 @@ extern const uint16_t mario_fireball_pixels[256];
 extern const unsigned mario_dash_clip,mario_run_clip,mario_brake_clip,mario_capture_clip;
 extern const unsigned mario_damage_clips[17];
 extern const unsigned mario_damage_fall_clip;
+/* Bone-pose bank (MARIO_SKELETAL): channels per joint are tx,ty,tz,rx,ry,rz,sx,sy,sz. */
+typedef struct { const int16_t *frames; const uint16_t *channels; const int16_t *base; uint16_t ticks, varying; } MarioSkelClip;
+typedef struct { int16_t x,y,z,joint; } MarioSkelVertex;
+extern const MarioSkelClip mario_skel_clips[];
+extern const int8_t mario_joint_parent[];
+extern const unsigned mario_joint_count;
+extern const MarioSkelVertex mario_skel_vertices[];
+extern const int32_t mario_skel_scale,mario_skel_offset[3];
 '''
     (output / 'mario_mesh.h').write_text(header)
     with (output / 'mario_mesh.h').open('a') as f:

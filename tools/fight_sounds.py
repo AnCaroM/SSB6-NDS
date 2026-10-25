@@ -36,12 +36,37 @@ SOUNDS=[
     ('VOICE_DEAD','nSYAudioVoiceMarioDead',4,.6),
     ('DEAD_SLAM','nSYAudioFGMMarioDeadSlam',4,.8),
     ('DEAD_EXPLODE','nSYAudioFGMDeadExplodeL',4,1.2),
+    # Link (Prueba17): sword hits, swings and voices from 224_LinkMainMotion.c
+    # and 225_LinkMain.c attributes.
+    ('SLASH_S','nSYAudioFGMSlashS',3,.8),
+    ('SLASH_M','nSYAudioFGMSlashM',3,.8),
+    ('SLASH_L','nSYAudioFGMSlashL',3,1.),
+    ('BLADE_SWING1','nSYAudioFGMBladeSwing1',0,.5),
+    ('BLADE_SWING3','nSYAudioFGMBladeSwing3',0,.5),
+    ('BLADE_SWING4','nSYAudioFGMBladeSwing4',0,.6),
+    ('LINK_LAND','nSYAudioFGMLinkLanding',0,.3),
+    ('LINK_SPIN','nSYAudioFGMLinkSpecialHi',1,.8),
+    ('HOOKSHOT','nSYAudioFGMLinkCatchHookshot',1,.6),
+    ('LINK_JUMP','nSYAudioVoiceLinkJump',2,.5),
+    ('LINK_JUMP_AIR','nSYAudioVoiceLinkJumpAerial',2,.6),
+    ('LINK_SMASH1','nSYAudioVoiceLinkSmash1',2,.8),
+    ('LINK_SMASH2','nSYAudioVoiceLinkSmash2',2,.8),
+    ('LINK_SMASH3','nSYAudioVoiceLinkSmash3',2,.8),
+    ('LINK_SPIN_VOICE','nSYAudioVoiceLinkSpecialHi',2,.8),
+    ('LINK_DAMAGE','nSYAudioVoiceLinkDamage',2,.6),
+    ('LINK_DEAD','nSYAudioVoiceLinkDead',4,.7),
+    ('LINK_DEAD_SLAM','nSYAudioFGMLinkDeadSlam',4,.8),
+    # Prueba18: boomerang return/catch, bomb pull and explosion.
+    ('BOOMERANG_RETURN','nSYAudioFGMLinkSpecialNReturn',1,.6),
+    ('BOOMERANG_CATCH','nSYAudioFGMLinkSpecialNGet',1,.5),
+    ('BOMB_GET','nSYAudioFGMLinkSpecialLwGet',1,.5),
+    ('EXPLODE_L','nSYAudioFGMExplodeL',4,1.),
 ]
 NONE=255
 SMASH_RANDOM=254  # PlaySmashVoice; runtime picks VOICE_SMASH1..3
-# dFTMainHitCollisionFGMs (src/ft/ftmain.c) rows used by Mario: kind -> S/M/L.
+# dFTMainHitCollisionFGMs (src/ft/ftmain.c) rows used by Mario/Link: kind -> S/M/L.
 HIT_KINDS={0:('PUNCH_S','PUNCH_M','PUNCH_L'),1:('KICK_S','KICK_M','KICK_L'),
-           2:('COIN','COIN','COIN'),3:('BURN_S','BURN_M','BURN_L')}
+           2:('COIN','COIN','COIN'),3:('BURN_S','BURN_M','BURN_L'),5:('SLASH_S','SLASH_M','SLASH_L')}
 INDEX={key:i for i,(key,*_) in enumerate(SOUNDS)}
 BY_FGM={fgm:i for i,(_,fgm,*_) in enumerate(SOUNDS)}
 

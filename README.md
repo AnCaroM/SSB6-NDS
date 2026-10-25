@@ -23,6 +23,14 @@ esos recursos y también se excluyen del repositorio y de la CI. Consultar
   sonido provisional retirado en [Prueba13](docs/animaciones-prueba13.md).
 - Efectos y voces originales de Mario convertidos de la ROM del usuario
   ([Prueba14](docs/sonido-prueba14.md), sin probar en DS).
+- Animación por huesos con la pila de matrices de la DS: 227 KiB en lugar de
+  1,25 MiB ([Prueba15](docs/huesos-prueba15.md), sin probar en DS).
+- Link convertido desde la ROM (modelo y 72 animaciones) en un visor del menú;
+  aún no combate ([Prueba16](docs/link-prueba16.md), sin probar en DS).
+- Selección Mario/Link en el 1v1: física, golpes, giro y sonidos de Link
+  ([Prueba17](docs/link-prueba17.md), sin probar en DS).
+- Boomerang y bomba de Link, agacharse para ambos
+  ([Prueba18](docs/link-prueba18.md), sin probar en DS).
 - Pruebas de lógica en PC, presupuestos DS y herramientas de inspección.
 - Pantalla de inicio y selección de modo (Prueba11, sin probar en DS);
   ver [docs/menu-prueba11.md](docs/menu-prueba11.md).
@@ -77,13 +85,13 @@ Ajustar la ruta a la instalación local del SDK:
 
 ```powershell
 python tools/build_nds.py --devkitpro C:/devkitPro --check
-python tools/build_nds.py --devkitpro C:/devkitPro --demo versus --compact-poses
+python tools/build_nds.py --devkitpro C:/devkitPro --demo versus --skeletal-poses
 python tools/check_ds_budget.py --demo versus
 ```
 
 Resultado: `build/nds/ssb-versus.nds`. Se puede abrir en melonDS o copiar a una
 microSD compatible con DSPico. No hace falta copiar la ROM N64 a la DS.
-Omitir `--compact-poses` permite comparar con el banco de poses de 16 bits.
+`--compact-poses` o ninguna opción usan los bancos de vértices anteriores (comparación).
 
 ## Controles
 

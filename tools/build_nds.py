@@ -21,6 +21,7 @@ def main():
     parser.add_argument('--demo', choices=['motion', 'mario', 'scene', 'combat', 'dreamland','versus'], default='motion')
     parser.add_argument('--autoplay', action='store_true', help='Start the integrated scene with scripted input')
     parser.add_argument('--compact-poses',action='store_true',help='Use bounded-error 8-bit pose bank with integer decode')
+    parser.add_argument('--skeletal-poses',action='store_true',help='Bone-pose bank rendered with the DS matrix stack')
     parser.add_argument('--animation-review',action='store_true',help='Separate slow scripted attack/reaction diagnostic ROM')
     args = parser.parse_args()
     if not args.devkitpro:
@@ -52,13 +53,15 @@ def main():
              '-DARM9', '-D__NDS__', '-ffp-contract=off', '-fno-fast-math',
              '-ffunction-sections', '-fdata-sections', '-I' + str(ROOT / 'src'),
              '-I' + str(sdk / 'libnds/include'), '-I' + str(calico / 'include')]
-    sources = ['src/motion.c', 'src/stage.c', 'src/motion_scene.c', 'src/special_hi.c', 'platform/nds/main.c']
+    sources = ['src/motion.c', 'src/stage.c', 'src/motion_scene.c', 'src/fighter_attr.c', 'src/special_hi.c', 'platform/nds/main.c']
     stem = 'ssb-' + args.demo
     if args.animation_review:
         if args.demo!='versus':parser.error('--animation-review requires --demo versus')
         flags+=['-DANIMATION_REVIEW=1','-DSCENE_AUTOPLAY=1']
         stem+='-review'
+    if args.compact_poses and args.skeletal_poses:parser.error('Choose --compact-poses or --skeletal-poses')
     if args.compact_poses:flags.append('-DMARIO_COMPACT_POSES=1')
+    if args.skeletal_poses:flags.append('-DMARIO_SKELETAL=1')
     if args.autoplay:
         if args.demo not in ('scene','combat','dreamland','versus'): parser.error('--autoplay requires an integrated scene')
         stem += '-auto'
@@ -68,18 +71,29 @@ def main():
         subprocess.run([sys.executable, str(ROOT / 'tools/convert_mario_model.py')], check=True)
         sources = ['platform/nds/model_main.c', 'platform/nds/mario_render.c', 'build/model/mario_mesh.c', 'build/model/mario_clips.c']
         if args.demo in ('scene','combat','dreamland','versus'):
-            sources = ['src/motion.c', 'src/stage.c', 'src/motion_scene.c', 'src/special_hi.c', 'platform/nds/scene_main.c', 'platform/nds/stage_render.c',
+            sources = ['src/motion.c', 'src/stage.c', 'src/motion_scene.c', 'src/fighter_attr.c', 'src/special_hi.c', 'platform/nds/scene_main.c', 'platform/nds/stage_render.c',
                        'platform/nds/mario_render.c', 'build/model/mario_mesh.c', 'build/model/mario_clips.c']
             if args.demo in ('combat','dreamland','versus'):
                 sources[sources.index('platform/nds/scene_main.c')] = 'platform/nds/combat_main.c'
                 sources.append('src/combat.c')
                 sources.append('build/model/mario_moves.c')
+                sources.append('src/fighter_mario_legacy.c')
                 sources.append('src/recovery_demo.c')
             if args.demo=='versus':
-                sources[sources.index('platform/nds/combat_main.c')]='platform/nds/versus_main.c'
+                # Mario and Link come from the generic converter (bone renderer);
+                # the legacy Mario mesh/clips/moves are not linked.
+                for legacy in ('platform/nds/combat_main.c','platform/nds/mario_render.c','build/model/mario_mesh.c',
+                               'build/model/mario_clips.c','build/model/mario_moves.c','src/fighter_mario_legacy.c'):
+                    sources.remove(legacy)
+                sources.insert(0,'platform/nds/versus_main.c')
                 subprocess.run([sys.executable,str(ROOT/'tools/extract_fight_audio.py')],check=True)
                 flags.append('-I'+str(ROOT/'build/audio'))
                 sources+=['src/versus.c','src/menu.c','platform/nds/fight_audio.c','build/audio/fight_samples.c']
+                for fighter in ('mario','link'):
+                    subprocess.run([sys.executable,str(ROOT/'tools/convert_fighter.py'),'--fighter',fighter],check=True)
+                    flags.append('-I'+str(ROOT/'build/fighters'/fighter))
+                    sources.append(f'build/fighters/{fighter}/{fighter}_model.c')
+                sources.append('platform/nds/fighter_render.c')
                 if args.animation_review:sources.append('src/animation_review.c')
             if args.demo in ('dreamland','versus'):
                 subprocess.run([sys.executable,str(ROOT/'tools/extract_dreamland.py')],check=True)
@@ -87,6 +101,7 @@ def main():
                 sources.remove('platform/nds/stage_render.c')
                 sources+=['src/camera.c','platform/nds/dreamland_render.c','build/dreamland/dreamland_mesh.c']
                 flags+=['-DORIGINAL_DREAMLAND=1','-I'+str(ROOT/'build/dreamland')]
+        if args.skeletal_poses and args.demo!='versus':sources.append('build/model/mario_skeleton.c')
         flags.append('-I' + str(ROOT / 'build/model'))
     objects = []
     for index, source in enumerate(sources):
@@ -105,17 +120,17 @@ def main():
                       'scene': 'SSB Mario;Integration;Original model and clips',
                       'combat': 'SSB NDS;Prueba 02;Mario - combate de prueba',
                       'dreamland': 'SSB NDS;Prueba 09;Mario - animaciones revisadas',
-                      'versus': 'SSB NDS;Prueba 14;Sonidos originales',
+                      'versus': 'SSB NDS;Prueba 18;Boomerang y bomba',
                       'motion': 'SSB Motion;Research scene;Provisional movement'}[args.demo])], env=env, check=True)
     size_output = subprocess.check_output([str(size), str(elf)], text=True)
     inputs=sources + [p.relative_to(ROOT).as_posix() for folder in
-        ['src','platform/nds','build/model','build/dreamland','build/audio']
+        ['src','platform/nds','build/model','build/dreamland','build/audio','build/fighters/mario','build/fighters/link']
         for p in (ROOT/folder).glob('*.h')]
     (build / (stem + '-build-info.json')).write_text(json.dumps({
         'compiler': subprocess.check_output([str(gcc), '--version'], text=True).splitlines()[0],
         'sources': {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in inputs},
         'nds_sha256': hashlib.sha256(nds.read_bytes()).hexdigest(), 'size': size_output,
-        'demo': args.demo, 'autoplay': args.autoplay,'compact_poses':args.compact_poses,
+        'demo': args.demo, 'autoplay': args.autoplay,'compact_poses':args.compact_poses,'skeletal_poses':args.skeletal_poses,
         'audio_enabled':args.demo=='versus','animation_review':args.animation_review,
         'runtime_tested': False}, indent=2))
     print(size_output)
