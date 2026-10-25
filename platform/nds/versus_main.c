@@ -1,6 +1,7 @@
 /* Two instances share one mesh, texture set and offline-sampled pose bank. */
 #include <nds.h>
 #include <stdio.h>
+#include <string.h>
 #include "versus.h"
 #include "menu.h"
 #include "mario_mesh.h"
@@ -316,10 +317,15 @@ int main(void)
             glMatrixMode(GL_PROJECTION);glLoadIdentity();glOrtho(-half_width,half_width,bottom,height+bottom,.1,20);
             glMatrixMode(GL_MODELVIEW);glLoadIdentity();
             dreamland_render_background(-half_width,half_width,bottom,height+bottom);
-            glTranslatef32(0,floattof32(-700.0f/WORLD_UNIT),floattof32(-6));
+            /* Ledge clips are authored relative to the ledge (and their climbs
+             * move by TransN): show them hanging from Dream Land's right edge. */
+            int ledge=!strncmp(link_clip_names[viewer.clip],"Cliff",5);
+            float x=ledge?2318.0f:0,cx=ledge?1900.0f:0;
+            glTranslatef32(floattof32(-cx/WORLD_UNIT),floattof32(-700.0f/WORLD_UNIT),floattof32(-6));
             dreamland_render_draw();
-            glPushMatrix();glRotateYi(viewer.facing>0?8192:-8192);
-            fighter_render_draw(&link_render,viewer.clip,viewer.age,0x7fff,NULL);
+            glPushMatrix();glTranslatef32(floattof32(x/WORLD_UNIT),0,0);
+            glRotateYi((ledge?-1:viewer.facing)>0?8192:-8192);
+            fighter_render_draw(&link_render,viewer.clip,viewer.age,0x7fff,NULL,ledge?FIGHTER_DRAW_ROOT_MOTION:0);
             glPopMatrix(1);
             glFlush(0);swiWaitForVBlank();
             continue;

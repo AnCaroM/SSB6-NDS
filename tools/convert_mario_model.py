@@ -26,6 +26,7 @@ class Model:
         self.matanim = matanim
         # Optional {joint: display list offset or None} model-part override.
         self.parts = parts or {}
+        self.world = []
         self.pointers = {}
         word = internal_chain_word
         while word != 0xffff:
@@ -184,9 +185,9 @@ class Model:
                                   'padded_width': pw, 'padded_height': ph, 'param': param, 'pixels': padded})
         return self.texture_keys[key]
 
-    def display_list(self, offset, matrix, joint):
+    def display_list(self, offset, matrix, joint, material_joint=None):
         cache = self.cache
-        colors = self.colors(joint)
+        colors = self.colors(joint if material_joint is None else material_joint)
         color = [255, 255, 255, 255]
         light = np.array([.25, .65, 1.0])
         light /= np.linalg.norm(light)
@@ -271,7 +272,7 @@ class Model:
                 self.tile_origin = np.array([(w0 >> 12) & 4095, w0 & 4095]) / 4
                 self.tile_extent = tuple(int(x) for x in
                                          ((np.array([(w1 >> 12) & 4095, w1 & 4095]) / 4) - self.tile_origin + 1))
-            elif opcode not in (0xe7, 0xdb, 0xe3, 0xfc, 0xe8, 0xf5, 0xe6,
+            elif opcode not in (0xe2, 0xf7, 0xf8, 0xf9, 0xe7, 0xdb, 0xe3, 0xfc, 0xe8, 0xf5, 0xe6,
                                 0xf0, 0xd7, 0xf2, 0xfd, 0xf3, 0xd9, 0xfb):
                 raise ValueError(f'Unsupported F3DEX2 command {opcode:#x} at {offset:#x}')
             offset += 8
@@ -294,6 +295,7 @@ class Model:
             local[:3, 3] = [tx, ty, tz]
             world = stack[depth - 1] @ local if depth else local
             stack[depth] = world
+            self.world.append(world)
             dl = self.parts[joint] if joint in self.parts else self.ptr(offset + 4)
             self.joints.append({'index': joint, 'depth': depth, 'display_list': dl})
             if dl is not None:

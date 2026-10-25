@@ -7,4 +7,8 @@
 typedef struct { const FighterModel *model; int textures[FIGHTER_MAX_TEXTURES]; } FighterRender;
 typedef struct { unsigned clip,tick,weight; } FighterBlend; /* weight 0..256 toward current */
 int fighter_render_init(FighterRender *render,const FighterModel *model);
-void fighter_render_draw(const FighterRender *render,unsigned clip,unsigned age,unsigned tint,const FighterBlend *from);
+/* FIGHTER_DRAW_ROOT_MOTION also draws TransN movement (clip root 2) that
+ * gameplay applies to the fighter position; the viewer uses it. */
+#define FIGHTER_DRAW_ROOT_MOTION 1
+void fighter_render_draw(const FighterRender *render,unsigned clip,unsigned age,unsigned tint,
+                         const FighterBlend *from,unsigned flags);
