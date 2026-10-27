@@ -245,7 +245,8 @@ CombatInput versus_cpu(const Versus *v,unsigned who)
         }
         return in;
     }
-    if(p->state==SCENE_CLIFF) {in.motion.stick_x=-p->cliff_side*80;return in;}
+    /* Hanging: a neutral stick first (CliffWait arms the climb), then inward. */
+    if(p->state==SCENE_CLIFF) {in.motion.stick_x=p->state_ticks<12?0:-p->cliff_side*80;return in;}
     if((p->x>2050 || p->x< -2050) && p->y<150) {
         in.motion.stick_x=p->x>0?-80:80;
         if(p->vy<0 && p->y<0 && p->jumps_used<2)in.motion.jump_held=pulse;
@@ -265,6 +266,8 @@ CombatInput versus_cpu(const Versus *v,unsigned who)
         in.shield=1;return in;
     }
     if(dist>260)in.motion.stick_x=dir*80;
+    /* Do not walk off the stage after an opponent hanging or recovering. */
+    if(grounded(p) && p->x*dir>2100)in.motion.stick_x=0;
     if(dy>350 && grounded(p))in.motion.jump_held=pulse;
     if(dy< -450 && p->platform>0)in.drop=pulse;
     if(pulse && dist<380 && dy<350 && dy> -300) {

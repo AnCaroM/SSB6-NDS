@@ -77,6 +77,17 @@ Fuente: `ftcommondamage.c` (`DamageAirCommonProcMap`), `ftcommondamagefall.c`,
 - La CPU intenta amortiguar a veces, bloquea ataques cercanos, rueda si se
   la acorrala y aporrea botones cuando está mareada.
 
+## Arreglo: flotar en el borde con la animación de caída
+
+El sólido de la isla se calculaba como intersección de semiplanos
+ensanchados por el rombo del cuerpo; en las esquinas convexas eso sobra 150
+unidades, así que un luchador que pasaba el borde quedaba "apoyado" en el
+aire con la animación de caída hasta deslizarse fuera. Ahora `stage.c`
+construye una vez el polígono exacto (envolvente convexa de la isla barrida
+por el rombo) y en el borde se cae de verdad. La CPU, además, suelta el
+mando un momento al colgarse para poder subir y ya no se tira del borde
+persiguiendo a un rival colgado.
+
 ## Sonidos nuevos
 
 `GuardOn`, `GuardOff`, `ShieldBreak`, `Escape` (rodar), `LinkDownBounce` y
@@ -94,7 +105,7 @@ Fuente: `ftcommondamage.c` (`DamageAirCommonProcMap`), `ftcommondamagefall.c`,
 
 ## Coste
 
-ARM9 estático 1.539.164 B (antes 1.375.800: 22 animaciones nuevas por
+ARM9 estático 1.540.292 B (antes 1.375.800: 22 animaciones nuevas por
 luchador, 115 KiB de poses, y 35 KiB de audio). Audio 383.280 B (60
 sonidos). Texturas sin cambios (235.520 de 262.144 B). Geometría sin cambios.
 Pruebas en PC (`tests/test_guard.c`): tiempos del escudo, desgaste y

@@ -25,26 +25,55 @@ const StagePoint *stage_island(StageId stage,unsigned *count)
     return island;
 }
 
+/* Feet positions whose body diamond (top=320, centre=190, bottom=0,
+ * width=150: 203_MarioMain) overlaps the island: the island swept by the
+ * mirrored diamond, as one convex polygon. Built once; intersecting the
+ * expanded half-planes instead over-extends the convex corners, so a fighter
+ * just past a ledge hovered on the lip in the falling pose (Prueba19 fix). */
+#define SOLID_MAX 40
+static const StagePoint mirrored_diamond[4]={{0,0},{0,-320},{150,-190},{-150,-190}};
+static StagePoint solid[SOLID_MAX];static unsigned solid_count;
+static float turn(StagePoint o,StagePoint a,StagePoint b)
+{return (a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);}
+static void build_solid(const StagePoint *points,unsigned count)
+{
+    StagePoint pts[SOLID_MAX],chain[SOLID_MAX*2];unsigned n=0,k=0;
+    for(unsigned i=0;i<count;++i)for(unsigned j=0;j<4;++j)
+        pts[n++]=(StagePoint){points[i].x+mirrored_diamond[j].x,points[i].y+mirrored_diamond[j].y};
+    for(unsigned i=1;i<n;++i) { /* sort by x, then y (insertion: 40 points, once) */
+        StagePoint p=pts[i];unsigned j=i;
+        while(j>0 && (pts[j-1].x>p.x || (pts[j-1].x==p.x && pts[j-1].y>p.y))) {pts[j]=pts[j-1];--j;}
+        pts[j]=p;
+    }
+    /* Andrew's monotone chain: counter-clockwise hull without collinear points. */
+    for(unsigned i=0;i<n;++i) {
+        while(k>=2 && turn(chain[k-2],chain[k-1],pts[i])<=0)--k;
+        chain[k++]=pts[i];
+    }
+    for(unsigned i=n-1,t=k+1;i-->0;) {
+        while(k>=t && turn(chain[k-2],chain[k-1],pts[i])<=0)--k;
+        chain[k++]=pts[i];
+    }
+    solid_count=k-1; /* the solver's normals expect the island's clockwise order */
+    for(unsigned i=0;i<solid_count;++i)solid[i]=chain[solid_count-1-i];
+}
+
 void stage_resolve_solid(StageId stage,float old_x,float old_y,
                          float *x,float *y,float *vx,float *vy)
 {
     unsigned count;const StagePoint *points=stage_island(stage,&count);
     if(!count)return;
-    /* Swept convex half-planes, expanded by Mario's original diamond:
-     * top=320, center=190, bottom=0, width=150 (203_MarioMain).
-     * At corners this conservative expansion is a reduced approximation.
-     * Up to three contacts slide along a wall without per-frame allocations. */
+    if(!solid_count)build_solid(points,count);
+    points=solid;count=solid_count;
+    /* Swept convex half-planes of the expanded island. Up to three contacts
+     * slide along a wall without per-frame allocations. */
     float px=old_x,py=old_y,dx=*x-old_x,dy=*y-old_y;
     for(int pass=0;pass<3;++pass) {
         float first=0,last=1,nx=0,ny=0;int face=-1,miss=0;
         for(unsigned i=0;i<count;++i) {
             StagePoint a=points[i],b=points[(i+1)%count];
             float n_x=a.y-b.y,n_y=b.x-a.x;
-            float support=0,v=n_y*320;
-            if(v<support)support=v;
-            v=n_x*150+n_y*190;if(v<support)support=v;
-            v=-n_x*150+n_y*190;if(v<support)support=v;
-            float limit=n_x*a.x+n_y*a.y-support;
+            float limit=n_x*a.x+n_y*a.y;
             float distance=n_x*px+n_y*py-limit,rate=n_x*dx+n_y*dy;
             /* Parallel/tangent motion on an exterior face is not penetration. */
             if(distance>=0 && rate>=0) {miss=1;break;}
