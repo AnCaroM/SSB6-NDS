@@ -3,8 +3,9 @@
 /* Front-end state only: no SDK calls, so the flow is host-testable. */
 enum {MENU_KEY_UP=1,MENU_KEY_DOWN=2,MENU_KEY_A=4,MENU_KEY_B=8,MENU_KEY_START=16,MENU_KEY_LEFT=32,MENU_KEY_RIGHT=64};
 typedef enum {MENU_TITLE,MENU_SELECT,MENU_CONTROLS,MENU_FIGHTERS} MenuScreen;
-typedef enum {MENU_OPTION_TEST,MENU_OPTION_DEMO,MENU_OPTION_VIEWER,MENU_OPTION_CONTROLS,MENU_OPTION_COUNT} MenuOption;
-typedef enum {MENU_STAY,MENU_PLAY_TEST,MENU_PLAY_DEMO,MENU_VIEW_FIGHTER} MenuAction;
+typedef enum {MENU_OPTION_TEST,MENU_OPTION_DEMO,MENU_OPTION_EXPLORE,MENU_OPTION_CONTROLS,MENU_OPTION_COUNT} MenuOption;
+/* EXPLORE: one chosen fighter alone on the stage (no CPU, no KO). */
+typedef enum {MENU_STAY,MENU_PLAY_TEST,MENU_PLAY_DEMO,MENU_PLAY_EXPLORE} MenuAction;
 /* Bottom console rows: each option is a title row plus a description row. */
 #define MENU_FIRST_ROW 8
 #define MENU_ROW_SPACING 3

@@ -42,7 +42,8 @@ esos recursos y también se excluyen del repositorio y de la CI. Consultar
 - Boomerang y bomba de Link, agacharse para ambos
   ([Prueba18](docs/link-prueba18.md), sin probar en DS).
 - Escudo con desgaste y rotura, rodar, amortiguar la caída y levantarse del
-  suelo ([Prueba19](docs/escudo-prueba19.md), sin probar en DS).
+  suelo; modo "Explorar el mapa" con un solo personaje, que sustituye al
+  visor de Link ([Prueba19](docs/escudo-prueba19.md), sin probar en DS).
 - Pruebas de lógica en PC, presupuestos DS y herramientas de inspección.
 - Pantalla de inicio y selección de modo (Prueba11, sin probar en DS);
   ver [docs/menu-prueba11.md](docs/menu-prueba11.md).

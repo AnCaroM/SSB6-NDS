@@ -26,10 +26,16 @@ int main(void)
     menu_step(&m,MENU_KEY_DOWN,-1);menu_step(&m,MENU_KEY_LEFT,-1);assert(m.side==1 && m.pick[1]==0);
     menu_step(&m,0,MENU_PICK_ROW+MENU_PICK_SPACING);assert(m.pick[1]==1);
     assert(menu_step(&m,MENU_KEY_B,-1)==MENU_STAY && m.screen==MENU_SELECT);
-    /* Third option opens the fighter viewer. */
+    /* Third option: explore the stage with one chosen fighter (single row). */
     menu_init(&m);menu_step(&m,MENU_KEY_START,-1);menu_step(&m,MENU_KEY_DOWN,-1);menu_step(&m,MENU_KEY_DOWN,-1);
-    assert(m.cursor==MENU_OPTION_VIEWER && menu_step(&m,MENU_KEY_A,-1)==MENU_VIEW_FIGHTER);
-    assert(menu_step(&m,0,MENU_FIRST_ROW+2*MENU_ROW_SPACING)==MENU_VIEW_FIGHTER);
+    assert(m.cursor==MENU_OPTION_EXPLORE && menu_step(&m,MENU_KEY_A,-1)==MENU_STAY);
+    assert(m.screen==MENU_FIGHTERS && m.pending==MENU_PLAY_EXPLORE && m.side==0);
+    menu_step(&m,MENU_KEY_DOWN,-1);assert(m.side==0);                 /* no second side */
+    menu_step(&m,MENU_KEY_RIGHT,-1);assert(m.pick[0]==1);
+    menu_step(&m,0,MENU_PICK_ROW+MENU_PICK_SPACING);assert(m.pick[1]==1); /* second row inert */
+    assert(menu_step(&m,MENU_KEY_A,-1)==MENU_PLAY_EXPLORE);
+    m.screen=MENU_SELECT;
+    assert(menu_step(&m,0,MENU_FIRST_ROW+2*MENU_ROW_SPACING)==MENU_STAY && m.pending==MENU_PLAY_EXPLORE);
     /* Controls page opens from the list and returns to it. */
     menu_init(&m);menu_step(&m,MENU_KEY_START,-1);m.cursor=MENU_OPTION_CONTROLS;
     assert(menu_step(&m,MENU_KEY_A,-1)==MENU_STAY && m.screen==MENU_CONTROLS);

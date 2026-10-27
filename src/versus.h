@@ -14,9 +14,11 @@ typedef struct {
     const Fighter *kinds[2];   /* character of each side (Mario if NULL) */
     unsigned tick,freeze,cpu_decisions;
     int winner; /* -1 playing, 0/1 winner, 2 draw */
+    int solo;   /* explore mode: only side 0 exists; no contact, no KO */
 } Versus;
 void versus_init(Versus *v); /* Mario vs Mario */
 void versus_init_fighters(Versus *v,const Fighter *a,const Fighter *b);
+void versus_init_solo(Versus *v,const Fighter *a); /* one fighter exploring the stage */
 void versus_step(Versus *v,const CombatInput input[2]);
 CombatInput versus_cpu(const Versus *v,unsigned who);
 int versus_captured(const Versus *v,unsigned who);

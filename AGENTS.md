@@ -134,6 +134,9 @@
   radius (.65h/55+.35)*shield_size at YRotN; blocked hit = setoff (dmg*1.62+4
   ticks, x2 push) or break (vy shield_break_vel_y, FuraFura 400-pct+90, mash -4).
   Landing while stunned/tumbling: tech if R within 20 ticks else DownBounce.
-  R is now the shield; the map toggles by touch. versus.csv changes (CPU
-  shields); other Mario traces stay byte-identical. Not yet seen on DS.
-  See docs/escudo-prueba19.md.
+  R is now the shield; the map toggles by touch. The island solid is the exact
+  hull of the island swept by the body diamond (no hovering past ledges);
+  recovery/special traces re-baselined, versus.csv changes (CPU shields),
+  other Mario traces stay byte-identical. The menu's Link viewer is replaced by
+  an explore mode (Versus.solo: one fighter, no contact, endless lives). Not
+  yet seen on DS. See docs/escudo-prueba19.md.

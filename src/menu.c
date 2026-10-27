@@ -36,7 +36,7 @@ static MenuAction choose(Menu *m)
 {
     if(m->cursor==MENU_OPTION_TEST)return fighters(m,MENU_PLAY_TEST);
     if(m->cursor==MENU_OPTION_DEMO)return fighters(m,MENU_PLAY_DEMO);
-    if(m->cursor==MENU_OPTION_VIEWER)return MENU_VIEW_FIGHTER;
+    if(m->cursor==MENU_OPTION_EXPLORE)return fighters(m,MENU_PLAY_EXPLORE);
     m->screen=MENU_CONTROLS;m->dirty=1;return MENU_STAY;
 }
 
@@ -49,12 +49,13 @@ MenuAction menu_step(Menu *m,unsigned down,int touch_row)
     }
     if(m->screen==MENU_FIGHTERS) {
         if(down&MENU_KEY_B) {m->screen=MENU_SELECT;m->dirty=1;return MENU_STAY;}
+        unsigned sides=m->pending==MENU_PLAY_EXPLORE?1:2; /* exploring: one fighter */
         if(touch_row>=MENU_START_ROW && touch_row<=MENU_START_ROW+1)return m->pending;
-        for(unsigned i=0;i<2;++i)if(touch_row>=MENU_PICK_ROW+(int)(i*MENU_PICK_SPACING) &&
-                                    touch_row<=MENU_PICK_ROW+(int)(i*MENU_PICK_SPACING)+1) {
+        for(unsigned i=0;i<sides;++i)if(touch_row>=MENU_PICK_ROW+(int)(i*MENU_PICK_SPACING) &&
+                                        touch_row<=MENU_PICK_ROW+(int)(i*MENU_PICK_SPACING)+1) {
             m->side=i;m->pick[i]=(m->pick[i]+1)%MENU_FIGHTER_COUNT;m->dirty=1;
         }
-        if(down&(MENU_KEY_UP|MENU_KEY_DOWN)) {m->side^=1;m->dirty=1;}
+        if(sides>1 && (down&(MENU_KEY_UP|MENU_KEY_DOWN))) {m->side^=1;m->dirty=1;}
         if(down&MENU_KEY_RIGHT) {m->pick[m->side]=(m->pick[m->side]+1)%MENU_FIGHTER_COUNT;m->dirty=1;}
         if(down&MENU_KEY_LEFT) {m->pick[m->side]=(m->pick[m->side]+MENU_FIGHTER_COUNT-1)%MENU_FIGHTER_COUNT;m->dirty=1;}
         if(down&(MENU_KEY_A|MENU_KEY_START))return m->pending;

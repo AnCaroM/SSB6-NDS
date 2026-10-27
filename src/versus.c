@@ -35,6 +35,12 @@ static void fighter_reset(Versus *v,unsigned i,int respawn)
     v->reaction[i]=(DamageReaction){0};
 }
 void versus_init(Versus *v) {versus_init_fighters(v,&fighter_mario,&fighter_mario);}
+void versus_init_solo(Versus *v,const Fighter *a)
+{
+    versus_init_fighters(v,a,a);v->solo=1;v->fighter[0].player.x=0;
+    /* The absent side is parked out of reach and never stepped. */
+    v->fighter[1].player.x=1e6f;v->fighter[1].player.y=1e6f;v->fighter[1].player.state=SCENE_AIR;
+}
 void versus_init_fighters(Versus *v,const Fighter *a,const Fighter *b)
 {
     memset(v,0,sizeof *v);v->winner=-1;v->stocks[0]=v->stocks[1]=3;
@@ -84,6 +90,7 @@ void versus_step(Versus *v,const CombatInput input[2])
     if(v->freeze) {--v->freeze;return;}
     unsigned before_hits[2],before_respawn[2],before_shield[2],before_starts[2];int was_captured[2],falling[2];
     int order=v->fighter[0].player.x<=v->fighter[1].player.x?1:-1;
+    unsigned sides=v->solo?1:2;
     for(unsigned i=0;i<2;++i) {
         target_snapshot(v,i);before_hits[i]=v->fighter[i].hits;
         before_respawn[i]=v->fighter[i].player.respawns;
@@ -93,7 +100,7 @@ void versus_step(Versus *v,const CombatInput input[2])
         falling[i]=v->stun[i] || versus_damage_pose(v,i)==17;
         combat_note_shield(&v->fighter[i],input[i].shield); /* counted even while stunned (tech buffer) */
     }
-    for(unsigned i=0;i<2;++i) {
+    for(unsigned i=0;i<sides;++i) {
         CombatScene *s=&v->fighter[i];
         if(v->invulnerable[i])--v->invulnerable[i];
         if(was_captured[i]) {++s->tick;s->attack_frame=-1;continue;}
@@ -146,11 +153,12 @@ void versus_step(Versus *v,const CombatInput input[2])
         if(s->attack_frame>=0 && (s->attack_frame!=old_attack || s->move!=old_move))move_sounds(v,i);
     }
     int respawned=0;
-    for(unsigned i=0;i<2;++i) {
+    for(unsigned i=0;i<sides;++i) {
         MotionScene *p=&v->fighter[i].player;
         /* Local horizontal/top blast limits supplement the scene bottom. */
         if(p->respawns!=before_respawn[i] || p->x>6000 || p->x< -6000 || p->y>6000) {
-            --v->stocks[i];fighter_reset(v,i,1);v->fighter[1-i].captured=0;respawned=1;
+            if(!v->solo)--v->stocks[i]; /* exploring: endless lives */
+            fighter_reset(v,i,1);v->fighter[1-i].captured=0;respawned=1;
             /* ftCommonDead: attr dead_fgm_ids (voice, slam) + DeadExplodeL. */
             sound_event(v,(FightSound)v->fighter[i].fighter->sounds.dead,i);
             sound_event(v,(FightSound)v->fighter[i].fighter->sounds.dead_slam,i);
@@ -160,7 +168,7 @@ void versus_step(Versus *v,const CombatInput input[2])
     if(!v->stocks[0] || !v->stocks[1]) {
         v->winner=!v->stocks[0] && !v->stocks[1]?2:(!v->stocks[0]?1:0);return;
     }
-    if(respawned)return;
+    if(respawned || v->solo)return;
     MotionScene *a=&v->fighter[0].player,*b=&v->fighter[1].player;
     if(!v->fighter[0].captured && !v->fighter[1].captured && grounded(a) && grounded(b) &&
        !rolling(&v->fighter[0]) && !rolling(&v->fighter[1]) &&

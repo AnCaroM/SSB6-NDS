@@ -210,8 +210,8 @@ static void draw_title(int prompt)
 
 static void draw_select(const Menu *m)
 {
-    static const char *const names[MENU_OPTION_COUNT]={"MODO DE PRUEBA","DEMO CPU vs CPU","VISOR DE LINK","CONTROLES"};
-    static const char *const notes[MENU_OPTION_COUNT]={"Mario vs CPU - 3 vidas","La CPU pelea contra si misma","Animaciones originales","Botones y acciones"};
+    static const char *const names[MENU_OPTION_COUNT]={"MODO DE PRUEBA","DEMO CPU vs CPU","EXPLORAR EL MAPA","CONTROLES"};
+    static const char *const notes[MENU_OPTION_COUNT]={"Tu vs CPU - 3 vidas","La CPU pelea contra si misma","Un personaje, sin rival","Botones y acciones"};
     iprintf("\x1b[2J");
     at(1,1,CYAN,"+----------------------------+");
     at(2,1,CYAN,"|");at(2,6,YELLOW,"SELECCIONA UN MODO");at(2,30,CYAN,"|");
@@ -245,17 +245,18 @@ static void draw_fighters(const Menu *m)
 {
     iprintf("\x1b[2J");
     at(1,1,CYAN,"+----------------------------+");
-    at(2,1,CYAN,"|");at(2,5,YELLOW,"ELIGE LOS PERSONAJES");at(2,30,CYAN,"|");
+    int explore=m->pending==MENU_PLAY_EXPLORE;
+    at(2,1,CYAN,"|");at(2,5,YELLOW,explore?"ELIGE TU PERSONAJE  ":"ELIGE LOS PERSONAJES");at(2,30,CYAN,"|");
     at(3,1,CYAN,"+----------------------------+");
-    at(5,2,WHITE,m->pending==MENU_PLAY_DEMO?"Demo: CPU contra CPU":"Modo de prueba: tu vs CPU");
-    for(unsigned i=0;i<2;++i) {
+    at(5,2,WHITE,explore?"Explorar Dream Land sin rival":m->pending==MENU_PLAY_DEMO?"Demo: CPU contra CPU":"Modo de prueba: tu vs CPU");
+    for(unsigned i=0;i<(explore?1u:2u);++i) {
         int row=MENU_PICK_ROW+(int)(i*MENU_PICK_SPACING),chosen=i==m->side;
         at(row,2,chosen?YELLOW:WHITE,chosen?"> ":"  ");
         iprintf("%s%-6s",i?BLUE:RED,i?"CPU":(m->pending==MENU_PLAY_DEMO?"CPU 1":"TU"));
         iprintf("%s  <  %s%-6s%s  >",WHITE,YELLOW,fighters[m->pick[i]]->name,WHITE);
     }
-    at(MENU_START_ROW,9,GREEN,"A / toca: JUGAR");
-    at(20,1,WHITE,"IZQ/DER personaje ARR/ABA lado");
+    at(MENU_START_ROW,9,GREEN,explore?"A / toca: EXPLORAR":"A / toca: JUGAR");
+    at(20,1,WHITE,explore?"IZQ/DER personaje":"IZQ/DER personaje ARR/ABA lado");
     at(21,1,WHITE,"B volver   o toca un nombre");
 }
 
@@ -263,55 +264,23 @@ static void draw_hud_frame(const Versus *match,int watch)
 {
     iprintf("\x1b[2J");
     at(0,0,CYAN,"================================");
-    at(1,1,YELLOW,watch?"DEMO CPU vs CPU":"MODO DE PRUEBA");
+    at(1,1,YELLOW,match->solo?"EXPLORAR":watch?"DEMO CPU vs CPU":"MODO DE PRUEBA");
     at(1,20,WHITE,"Dream Land");
     at(2,0,CYAN,"================================");
-    at(4,2,RED,watch?"CPU 1":"TU");at(4,18,BLUE,watch?"CPU 2":"CPU");
-    at(4,7,WHITE,match->kinds[0]->name);at(4,23,WHITE,match->kinds[1]->name);
+    at(4,2,RED,watch?"CPU 1":"TU");at(4,7,WHITE,match->kinds[0]->name);
+    if(!match->solo) {at(4,18,BLUE,watch?"CPU 2":"CPU");at(4,23,WHITE,match->kinds[1]->name);}
     at(11,1,WHITE,"X golpe  A salto  B especial");
     at(12,1,WHITE,"L agarre Y+X smash R escudo");
-    at(13,1,WHITE,"START pausa  SELECT modo");
+    at(13,1,WHITE,match->solo?"START pausa  (vidas infinitas)":"START pausa  SELECT modo");
     at(14,1,WHITE,"Toca la pantalla: mapa");
     at(15,0,CYAN,"--------------------------------");
 }
 
-/* Fighter viewer: converted Link clips on the generic bone renderer. */
-typedef struct {unsigned clip,age,slow;int paused,facing,dirty;} Viewer;
-
-static void draw_viewer_frame(void)
+/* Restart the current mode with its fighters (rematch, reset, SELECT). */
+static void restart(Versus *match)
 {
-    iprintf("\x1b[2J");
-    at(0,0,CYAN,"================================");
-    at(1,1,YELLOW,"VISOR DE LINK");at(1,20,WHITE,"Dream Land");
-    at(2,0,CYAN,"================================");
-    at(10,1,WHITE,"IZQ/DER  animacion");
-    at(11,1,WHITE,"A pausa  R paso   Y lento");
-    at(12,1,WHITE,"X girar  B volver al menu");
-    at(14,0,CYAN,"--------------------------------");
-    at(16,1,GREEN,"Modelo y animaciones de la ROM");
-    at(17,1,GREEN,"Sin combate todavia");
-}
-
-static void draw_viewer(const Viewer *v)
-{
-    const FighterClip *c=&link_model.clips[v->clip];unsigned ticks=c->ticks;
-    unsigned tick=c->loop?v->age%ticks:(v->age<ticks?v->age:ticks-1);
-    iprintf("\x1b[4;1H%s%2u/%u %s%-18s",WHITE,v->clip+1,link_model.clip_count,YELLOW,link_clip_names[v->clip]);
-    iprintf("\x1b[6;1H%sTic %3u/%-3u %s",WHITE,tick,ticks,c->loop?"bucle ":"      ");
-    iprintf("\x1b[7;1H%s%-8s%-10s",YELLOW,v->paused?"PAUSA":"",v->slow?"LENTO x1/3":"");
-}
-
-static void viewer_step(Viewer *v,unsigned down)
-{
-    unsigned n=link_model.clip_count;
-    if(down&KEY_RIGHT) {v->clip=(v->clip+1)%n;v->age=0;v->dirty=1;}
-    if(down&KEY_LEFT) {v->clip=(v->clip+n-1)%n;v->age=0;v->dirty=1;}
-    if(down&KEY_A) {v->paused=!v->paused;v->dirty=1;}
-    if(down&KEY_Y) {v->slow=!v->slow;v->dirty=1;}
-    if(down&KEY_X)v->facing=-v->facing;
-    static unsigned clock;
-    if(v->paused) {if(down&KEY_R) {++v->age;v->dirty=1;}}
-    else if(!v->slow || ++clock%3==0) {++v->age;if((v->age&3)==0)v->dirty=1;}
+    if(match->solo)versus_init_solo(match,match->kinds[0]);
+    else versus_init_fighters(match,match->kinds[0],match->kinds[1]);
 }
 
 static const char *percent_color(unsigned percent)
@@ -319,7 +288,7 @@ static const char *percent_color(unsigned percent)
 
 static void draw_hud(const Versus *match,int paused,int watch)
 {
-    for(unsigned i=0;i<2;++i) {
+    for(unsigned i=0;i<(match->solo?1u:2u);++i) {
         int col=i?18:2;
         iprintf("\x1b[6;%dH%s%3u%%",col,percent_color(match->percent[i]),match->percent[i]);
         iprintf("\x1b[8;%dH%s",col,GREEN);
@@ -353,8 +322,7 @@ int main(void)
     FightCamera camera;camera_reset(&camera);
     Menu menu;menu_init(&menu);
     MenuInputGate input_gate={0};
-    int in_menu=!SCENE_AUTOPLAY,fade=16,prompt=-1,hud_dirty=1,viewing=0;
-    Viewer viewer={0,0,0,0,1,1};
+    int in_menu=!SCENE_AUTOPLAY,fade=16,prompt=-1,hud_dirty=1;
     unsigned clips[2]={0},ages[2]={0};int paused=0,watch=SCENE_AUTOPLAY,map_view=0;
     unsigned rendered_age[2]={0},blend_left[2]={0},action_ages[2]={0};
     int damage_pose[2]={-1,-1};FighterBlend blends[2]={{0}};
@@ -380,12 +348,11 @@ int main(void)
                 ((down&KEY_A)?MENU_KEY_A:0)|((down&KEY_B)?MENU_KEY_B:0)|((down&KEY_START)?MENU_KEY_START:0)|
                 ((down&KEY_LEFT)?MENU_KEY_LEFT:0)|((down&KEY_RIGHT)?MENU_KEY_RIGHT:0);
             MenuAction action=menu_step(&menu,keys,touch_row);
-            if(action==MENU_VIEW_FIGHTER) {
-                in_menu=0;viewing=1;fade=16;viewer=(Viewer){0,0,0,0,1,1};
-                menu_input_arm(&input_gate,physical_held);draw_viewer_frame();
-            } else if(action!=MENU_STAY) {
+            if(action!=MENU_STAY) {
                 in_menu=0;watch=action==MENU_PLAY_DEMO;fade=16;hud_dirty=1;
-                versus_init_fighters(&match,fighters[menu.pick[0]],fighters[menu.pick[1]]);camera_reset(&camera);
+                if(action==MENU_PLAY_EXPLORE)versus_init_solo(&match,fighters[menu.pick[0]]);
+                else versus_init_fighters(&match,fighters[menu.pick[0]],fighters[menu.pick[1]]);
+                camera_reset(&camera);
                 menu_input_arm(&input_gate,physical_held);
                 paused=map_view=0;peak_us=over_budget=0;ages[0]=ages[1]=clips[0]=clips[1]=0;
             } else if(menu.dirty) {
@@ -412,44 +379,21 @@ int main(void)
             swiWaitForVBlank();
             continue;
         }
-        if(viewing) {
-            if(down&KEY_B) {
-                viewing=0;in_menu=1;menu_init(&menu);menu.screen=MENU_SELECT;menu.cursor=MENU_OPTION_VIEWER;fade=16;
-                swiWaitForVBlank();continue;
-            }
-            viewer_step(&viewer,down);
-            if(viewer.dirty) {viewer.dirty=0;draw_viewer(&viewer);}
-            float height=2600.0f/WORLD_UNIT,half_width=height*(2.0f/3.0f),bottom=-height*.5f;
-            glMatrixMode(GL_PROJECTION);glLoadIdentity();glOrtho(-half_width,half_width,bottom,height+bottom,.1,20);
-            glMatrixMode(GL_MODELVIEW);glLoadIdentity();
-            dreamland_render_background(-half_width,half_width,bottom,height+bottom);
-            /* Ledge clips are authored relative to the ledge (and their climbs
-             * move by TransN): show them hanging from Dream Land's right edge. */
-            int ledge=!strncmp(link_clip_names[viewer.clip],"Cliff",5);
-            float x=ledge?2318.0f:0,cx=ledge?1900.0f:0;
-            glTranslatef32(floattof32(-cx/WORLD_UNIT),floattof32(-700.0f/WORLD_UNIT),floattof32(-6));
-            dreamland_render_draw();
-            glPushMatrix();glTranslatef32(floattof32(x/WORLD_UNIT),0,0);
-            glRotateYi((ledge?-1:viewer.facing)>0?8192:-8192);
-            fighter_render_draw(&renders[1],viewer.clip,viewer.age,0x7fff,NULL,ledge?FIGHTER_DRAW_ROOT_MOTION:0);
-            glPopMatrix(1);
-            glFlush(0);swiWaitForVBlank();
-            continue;
-        }
         int reset=(held&KEY_START) && (held&KEY_SELECT) && (down&(KEY_START|KEY_SELECT));
         int to_menu=(paused || match.winner>=0) && (down&KEY_B);
-        if(to_menu) {fight_audio_stop();in_menu=1;menu_init(&menu);menu.screen=MENU_SELECT;menu.cursor=watch?MENU_OPTION_DEMO:MENU_OPTION_TEST;fade=16;
+        if(to_menu) {fight_audio_stop();in_menu=1;menu_init(&menu);menu.screen=MENU_SELECT;
+            menu.cursor=match.solo?MENU_OPTION_EXPLORE:watch?MENU_OPTION_DEMO:MENU_OPTION_TEST;fade=16;
             versus_init_fighters(&match,fighters[0],fighters[1]);swiWaitForVBlank();continue;}
         if(reset || (match.winner>=0 && (down&KEY_A))) {
-            fight_audio_stop();versus_init_fighters(&match,match.kinds[0],match.kinds[1]);camera_reset(&camera);paused=0;peak_us=over_budget=0;
+            fight_audio_stop();restart(&match);camera_reset(&camera);paused=0;peak_us=over_budget=0;
             ages[0]=ages[1]=0;hud_dirty=1;
             menu_input_arm(&input_gate,physical_held);held=physical_held;
             menu_input_filter(&input_gate,&held,&down);
         }
         else {
             if(down&KEY_START) {paused=!paused;if(paused)fight_audio_stop();}
-            if(down&KEY_SELECT) {
-                fight_audio_stop();watch=!watch;versus_init_fighters(&match,match.kinds[0],match.kinds[1]);camera_reset(&camera);
+            if((down&KEY_SELECT) && !match.solo) {
+                fight_audio_stop();watch=!watch;restart(&match);camera_reset(&camera);
                 ages[0]=ages[1]=0;hud_dirty=1;
                 menu_input_arm(&input_gate,physical_held);held=physical_held;
                 menu_input_filter(&input_gate,&held,&down);
@@ -470,12 +414,12 @@ int main(void)
             int advances=animation_review_step(&match,review_clock++);
 #else
             if(watch)input[0]=versus_cpu(&match,0);
-            input[1]=versus_cpu(&match,1);
+            if(!match.solo)input[1]=versus_cpu(&match,1);
             int advances=!match.freeze && match.winner<0;
             versus_step(&match,input);
 #endif
             fight_audio_events(&match);
-            if(advances)for(unsigned i=0;i<2;++i) {
+            if(advances)for(unsigned i=0;i<(match.solo?1u:2u);++i) {
                 CombatScene *s=&match.fighter[i];const Fighter *f=s->fighter;const FighterClipMap *c=&f->clips;
                 unsigned next=clip_for(f,&s->player);
                 /* SquatRv plays once when down is released (until it ends or another state starts). */
@@ -503,12 +447,12 @@ int main(void)
             }
         }
         sim_us=(unsigned)((u64)(u16)(timerTick(0)-sim_start)*1000000/(BUS_CLOCK/64));
-        CameraFighter interests[2];
-        for(unsigned i=0;i<2;++i) {
+        CameraFighter interests[2];unsigned sides=match.solo?1:2;
+        for(unsigned i=0;i<sides;++i) {
             MotionScene *s=&match.fighter[i].player;
             interests[i]=(CameraFighter){(int32_t)(s->x*16),(int32_t)(s->y*16),s->facing};
         }
-        if(!paused || !camera.ready)camera_step(&camera,interests,2);
+        if(!paused || !camera.ready)camera_step(&camera,interests,sides);
         float height=(map_view?5400.0f:camera.height/16.0f)/WORLD_UNIT;
         float half_width=height*(2.0f/3.0f),bottom=-height*.5f;
         float cx=map_view?0:camera.x/16.0f,cy=map_view?1400:camera.y/16.0f;
@@ -517,7 +461,7 @@ int main(void)
         dreamland_render_background(-half_width,half_width,bottom,height+bottom);
         glTranslatef32(floattof32(-cx/WORLD_UNIT),floattof32(-cy/WORLD_UNIT),floattof32(-6));
         dreamland_render_draw();
-        for(unsigned i=0;i<2;++i) {
+        for(unsigned i=0;i<sides;++i) {
             CombatScene *s=&match.fighter[i];const Fighter *f=s->fighter;
             /* Same character on both sides: tint the CPU blue, as before. */
             unsigned tint=i && match.kinds[0]==match.kinds[1]?RGB15(12,24,31):0x7fff;

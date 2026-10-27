@@ -152,5 +152,13 @@ int main(void)
         for(unsigned i=0;i<2;++i)assert(v.fighter[i].shield_health>=0 && v.fighter[i].shield_health<=55 && v.fighter[i].action<ACTION_COUNT);
     }
     assert(guards);
-    puts("PASS guard: shield timing/decay/heal, blocked hits, rolls, techs, knockdown, shield break and CPU");
+    /* Explore mode: one fighter, no contact, endless lives, no winner. */
+    versus_init_solo(&v,&fighter_link);in[0]=in[1]=(CombatInput){0};in[0].motion.stick_x=80;
+    unsigned respawns=0;
+    for(unsigned t=0;t<900;++t) { /* walks off the right edge and comes back */
+        versus_step(&v,in);respawns+=v.invulnerable[0]==90; /* fresh respawn immunity */
+        assert(v.winner<0 && v.stocks[0]==3 && !v.percent[0]);
+    }
+    assert(respawns>0 && v.fighter[1].player.x>5e5f && v.fighter[1].player.tick==0);
+    puts("PASS guard: shield timing/decay/heal, blocked hits, rolls, techs, knockdown, shield break, CPU and explore mode");
 }

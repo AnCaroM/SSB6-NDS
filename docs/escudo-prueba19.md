@@ -88,6 +88,15 @@ por el rombo) y en el borde se cae de verdad. La CPU, además, suelta el
 mando un momento al colgarse para poder subir y ya no se tira del borde
 persiguiendo a un rival colgado.
 
+## Modo "Explorar el mapa"
+
+Sustituye al visor de Link del menú (sus animaciones ya se ven en combate).
+Se elige un personaje y se recorre Dream Land sin rival: la misma física,
+ataques y escudo, con vidas infinitas (caer fuera reaparece sin perder
+vida) y sin ganador. SELECT no hace nada; B en pausa vuelve al menú. En
+`versus.c` es `versus_init_solo`: el segundo lado queda aparcado fuera del
+mapa y nunca se actualiza, y la cámara sigue a un solo luchador.
+
 ## Sonidos nuevos
 
 `GuardOn`, `GuardOff`, `ShieldBreak`, `Escape` (rodar), `LinkDownBounce` y
