@@ -112,5 +112,7 @@ Pruebas en PC (`tests/test_guard.c`): tiempos del escudo, desgaste y
 recuperación, golpe bloqueado, agarre a través del escudo, rodar con vuelta
 y límite del borde, amortiguar, caída y levantarse de las tres formas,
 rotura con mareo y aporreo, y CPU contra CPU acotada. Los recorridos grabados
-de Mario (`long`, `short`, `ledge`, `recovery-*`, `special-*`, `moves`)
-siguen idénticos; `versus.csv` cambia porque la CPU ahora usa el escudo.
+de Mario `long`, `short`, `ledge`, `special-hi` y `moves` siguen idénticos;
+`recovery-*` y `special-*` cambian por el arreglo del borde (ya no se flota
+en el saliente; la ruta guionizada de la recuperación especial gira dos
+cuadros más tarde) y `versus.csv` porque la CPU ahora usa el escudo.
