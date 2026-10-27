@@ -122,7 +122,9 @@ def animated_joints(flags,roots,count):
     """Animation tables list the DObjs that exist for this motion, in tree order
     (ftmain hidden parts 0..2 are XRotN/TransN/YRotN at the front; later parts
     are optional tree joints such as Mario's joint28, absent unless enabled)."""
-    aux=[k for k in range(min(3,len(roots))) if flags&(1<<(31-k))]
+    # Part 2 (YRotN, bit 29: GuardOn/GuardOff) is created but animated at run
+    # time from the attributes' shield_anim_joints, not by a table in the file.
+    aux=[k for k in range(min(2,len(roots))) if flags&(1<<(31-k))]
     enabled={roots[k] for k in range(3,len(roots)) if flags&(1<<(31-k))}
     optional=set(roots[3:])
     return aux,[j for j in range(count) if j+4 not in optional or j+4 in enabled]
@@ -282,7 +284,10 @@ def export_actions(clips,float_frames,parents,motions,tables):
             dx=[z[t]-(z[t-1] if t else 0) for t in range(len(z))]
             lines.append(f'static const int16_t dx_{action.lower()}[{len(dx)}]={{'+','.join(map(str,dx))+'};');ref=f'dx_{action.lower()}'
         if action=='GUARD':
-            last=values[len(values)-1][len(parents)];shield=(round(float(last[2])),round(float(last[1])))
+            # Shield centre: the hip (model joint 0, child of YRotN) at the end
+            # of GuardOn; YRotN's own runtime pose is not in the animation file.
+            hip=world(values[len(values)-1],parents,_float_matrix)[0]
+            shield=(round(float(hip[2,3])),round(float(hip[1,3])))
         rows.append(f'{{{position[motion]},{ticks},{intangible[0]},{intangible[1]},{turn},{{{sounds[0]},{sounds[1]}}},{ref}}}, /* {action} */')
     lines.append('static const FighterAction actions[ACTION_COUNT]={');lines+=rows;lines.append('};')
     return lines,shield

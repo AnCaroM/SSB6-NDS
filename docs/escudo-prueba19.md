@@ -27,7 +27,12 @@ Fuente: `ftcommonguard1.c`, `ftcommonguard2.c`, `ftmain.c` (ftMainProcParams),
 - Vida 55 al aparecer. Mientras está arriba pierde 1 cada 16 tics; abajo
   recupera 1 cada 10 tics.
 - Radio = (0,65·vida/55 + 0,35) × `shield_size` (Mario 260, Link 280),
-  centrado en `YRotN` al final de `GuardOn` (Mario 0,135; Link −15,182).
+  centrado en la cadera al final de `GuardOn` (Mario 0,135; Link −15,182).
+  En el original el centro es `YRotN`, cuya pose de escudo viene de
+  `shield_anim_joints` en los atributos y no del archivo de animación: el
+  bit 29 de `GuardOn`/`GuardOff` crea esa articulación pero no añade una
+  tabla (el convertidor lo tiene en cuenta; antes desplazaba todas las
+  articulaciones y el personaje salía deformado con el escudo).
   Con poca vida la burbuja deja la cabeza fuera y se puede golpear por encima.
 - Golpe bloqueado: no hay daño; el escudo pierde el daño del golpe; los dos
   quedan en pausa de impacto (daño/3+5) y el defensor retrocede

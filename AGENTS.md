@@ -129,8 +129,10 @@
 - Prueba19: shield, rolls, techs, knockdown and shield break for both fighters
   as CombatScene.action (fighter.h FighterActionId; FighterAction table emitted
   by convert_fighter.py: clip, intangible window from SetHitStatusAll, flag1
-  turn, tick-0 sounds, per-tick TransN dx for movement clips; GuardOn composes
-  two inserted joints into one prefix). Shield 55, -1/16 ticks up, +1/10 down,
+  turn, tick-0 sounds, per-tick TransN dx for movement clips). FTANIM bit 29
+  (YRotN, GuardOn/GuardOff) creates a joint animated at run time from
+  shield_anim_joints: no table in the file, so only bits 31/30 insert aux
+  tables (the sampler can compose several prefixes). Shield 55, -1/16 ticks up, +1/10 down,
   radius (.65h/55+.35)*shield_size at YRotN; blocked hit = setoff (dmg*1.62+4
   ticks, x2 push) or break (vy shield_break_vel_y, FuraFura 400-pct+90, mash -4).
   Landing while stunned/tumbling: tech if R within 20 ticks else DownBounce.

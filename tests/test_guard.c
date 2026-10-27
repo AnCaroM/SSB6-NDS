@@ -160,5 +160,11 @@ int main(void)
         assert(v.winner<0 && v.stocks[0]==3 && !v.percent[0]);
     }
     assert(respawns>0 && v.fighter[1].player.x>5e5f && v.fighter[1].player.tick==0);
+    /* Projectiles and items still work without a rival (contact pass runs). */
+    versus_init_solo(&v,&fighter_link);in[0]=(CombatInput){0};in[0].special=1;int boomerang=0,bomb=0;
+    for(unsigned t=0;t<80;++t) {versus_step(&v,in);in[0].special=0;boomerang|=v.fighter[0].boomerang.active;}
+    in[0].down=1;in[0].special=1;
+    for(unsigned t=0;t<80;++t) {versus_step(&v,in);in[0].special=0;bomb|=v.fighter[0].bomb.state!=BOMB_NONE;}
+    assert(boomerang && bomb);
     puts("PASS guard: shield timing/decay/heal, blocked hits, rolls, techs, knockdown, shield break, CPU and explore mode");
 }

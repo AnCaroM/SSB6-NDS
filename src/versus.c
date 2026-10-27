@@ -168,9 +168,9 @@ void versus_step(Versus *v,const CombatInput input[2])
     if(!v->stocks[0] || !v->stocks[1]) {
         v->winner=!v->stocks[0] && !v->stocks[1]?2:(!v->stocks[0]?1:0);return;
     }
-    if(respawned || v->solo)return;
+    if(respawned)return;
     MotionScene *a=&v->fighter[0].player,*b=&v->fighter[1].player;
-    if(!v->fighter[0].captured && !v->fighter[1].captured && grounded(a) && grounded(b) &&
+    if(!v->solo && !v->fighter[0].captured && !v->fighter[1].captured && grounded(a) && grounded(b) &&
        !rolling(&v->fighter[0]) && !rolling(&v->fighter[1]) &&
        a->y-b->y<200 && b->y-a->y<200 && (b->x-a->x)*order<220) {
         /* Reduced grounded body push prevents the CPU from walking through
@@ -178,9 +178,10 @@ void versus_step(Versus *v,const CombatInput input[2])
         float middle=(a->x+b->x)*.5f;a->x=middle-order*110;b->x=middle+order*110;
     }
     /* Both contact passes see post-physics snapshots, before either damage
-     * result is committed. This permits trades without player-order bias. */
-    for(unsigned i=0;i<2;++i)target_snapshot(v,i);
-    for(unsigned i=0;i<2;++i) {
+     * result is committed. This permits trades without player-order bias.
+     * Exploring alone still resolves side 0 (projectiles and items). */
+    for(unsigned i=0;i<sides;++i)target_snapshot(v,i);
+    for(unsigned i=0;i<sides;++i) {
         CombatScene *f=&v->fighter[i];int returning=f->boomerang.returning,bomb=f->bomb.state;
         f->boomerang.caught=0;
         combat_resolve(f);
@@ -191,7 +192,7 @@ void versus_step(Versus *v,const CombatInput input[2])
     }
     if(v->fighter[0].captured && v->fighter[1].captured)
         v->fighter[(v->tick&1)?0:1].captured=0;
-    for(unsigned i=0;i<2;++i) {
+    for(unsigned i=0;i<sides;++i) {
         CombatScene *s=&v->fighter[i];unsigned j=1-i;
         if(s->hits!=before_hits[i]) {
             v->percent[j]=s->percent;v->stun[j]=s->hitstun;v->launch[j]=s->damage_vx;
