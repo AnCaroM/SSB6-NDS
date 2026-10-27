@@ -52,6 +52,16 @@ int scene_special_hi(MotionScene *s,int stick_x)
 #define LINK_SPIN_GRAVITY_MUL .23f
 #define LINK_SPIN_FULL_GRAVITY_TICK 12
 #define LINK_SPIN_DRIFT_MUL .5f
+#define KIRBY_CUTTER_DRIFT_MUL .5f
+/* Kirby's Final Cutter (ftKirbySpecialHiSetStatus / SpecialAirHi): from the
+ * ground or the air; uses every remaining jump until landing. */
+int scene_special_hi_cutter(MotionScene *s)
+{
+    if(s->special_used || (s->state!=SCENE_WAIT && s->state!=SCENE_WALK && s->state!=SCENE_AIR && s->state!=SCENE_SQUAT))return 0;
+    s->special_air=s->state==SCENE_AIR;s->special_tilt=0;s->special_used=1;++s->special_uses;
+    s->air_jump=0;s->jumps_used=s->attr->jumps_max;s->vy=0;if(!s->special_air)s->vx=0;
+    s->platform=-1;enter(s,SCENE_SPECIAL_HI);return 1;
+}
 int scene_special_hi_rise(MotionScene *s,unsigned ticks)
 {
     if(s->special_used || s->state!=SCENE_AIR)return 0;
@@ -160,13 +170,17 @@ void scene_step(MotionScene *s, SceneInput input)
     case SCENE_AIR:
         ++s->state_ticks;
         if(s->air_jump)++s->air_jump_ticks;
-        if(pressed && s->jumps_used<2) {
+        /* Multi-jumpers (Kirby, jumps_max 6): the next jump needs flag1 of the
+         * current JumpAerialF script (tick 28), ftCommonJumpAerialCheckInterruptCommon. */
+        if(pressed && s->jumps_used<a->jumps_max && (s->jumps_used<2 || s->air_jump_ticks>=SCENE_MULTI_JUMP_READY)) {
             /* ftCommonJumpAerialSetStatus: (80*height_mul+base)*aerial height;
-             * horizontal impulse stick*jumpaerial_vel_x, forward/back threshold -10. */
-            s->air_jump=input.stick_x*s->facing>=-10?1:2;
+             * horizontal impulse stick*jumpaerial_vel_x, forward/back threshold -10.
+             * Later jumps: dFTKirbyJumpAerialFVelocities (button jump, full range). */
+            s->air_jump=a->jumps_max>2 || input.stick_x*s->facing>=-10?1:2;
             s->air_jump_ticks=0;
-            s->vy=(80*a->jump_height_mul+a->jump_height_base)*a->jumpaerial_height;s->vx=input.stick_x*a->jumpaerial_vel_x;
-            s->jumps_used=2;++s->air_jumps;
+            s->vy=s->jumps_used<2?(80*a->jump_height_mul+a->jump_height_base)*a->jumpaerial_height:a->multi_jump_vel[s->jumps_used-2];
+            s->vx=input.stick_x*a->jumpaerial_vel_x;
+            s->jumps_used=s->jumps_used<2?2:s->jumps_used+1;++s->air_jumps;
         }
         /* Preserve the prototype's immediate air steering/turning. Select
          * the original forward/back clip before this local facing update. */
@@ -178,7 +192,12 @@ void scene_step(MotionScene *s, SceneInput input)
         break;
     case SCENE_SPECIAL_HI:
         ++s->state_ticks;
-        if(s->kind!=FIGHTER_MARIO) {
+        if(s->kind==FIGHTER_KIRBY) {
+            /* Final Cutter: vertical speed is the clip's TransN (set by combat);
+             * no gravity; drift at air_accel x FTKIRBY_FINALCUTTER_AIR_ACCEL_MUL. */
+            s->vx=motion_air_accel(s->vx,input.stick_x,8,a->air_accel*KIRBY_CUTTER_DRIFT_MUL,a->air_speed_max_x);
+            s->vx=motion_air_friction(s->vx,a->air_friction);
+        } else if(s->kind!=FIGHTER_MARIO) {
             if(s->state_ticks<=s->special_ticks) {
                 float g=s->state_ticks>=LINK_SPIN_FULL_GRAVITY_TICK?a->gravity:a->gravity*LINK_SPIN_GRAVITY_MUL;
                 s->vy=motion_gravity(s->vy,g,a->tvel_base);
@@ -208,7 +227,7 @@ void scene_step(MotionScene *s, SceneInput input)
     if (s->state == SCENE_KNEE || s->state == SCENE_LAND || s->state == SCENE_SQUAT)
         s->vx = motion_ground_friction(s->vx, a->traction*4);
     if (s->state == SCENE_AIR) {
-        s->vy = motion_gravity(s->vy, a->gravity, a->tvel_base);
+        s->vy = s->force_vy?s->forced_vy:motion_gravity(s->vy, a->gravity, a->tvel_base);
         s->vx = motion_air_accel(s->vx, input.stick_x, 8, a->air_accel, a->air_speed_max_x);
         s->vx = motion_air_friction(s->vx, a->air_friction);
     }
@@ -241,6 +260,7 @@ void scene_step(MotionScene *s, SceneInput input)
     float incoming_x=total_vx,incoming_y=total_vy;
     stage_resolve_solid(s->stage,previous_x,previous_y,&s->x,&s->y,&total_vx,&total_vy);
     if(total_vx!=incoming_x) {s->vx=total_vx;s->hit_vx=0;}
+    int floor_stop=incoming_y<0 && total_vy!=incoming_y;
     if(total_vy!=incoming_y) {s->vy=total_vy;s->hit_vy=0;}
     unsigned count;
     const StagePlatform *platforms = stage_platforms(s->stage, &count);
@@ -250,7 +270,10 @@ void scene_step(MotionScene *s, SceneInput input)
         int within = s->x >= p->left && s->x <= p->right;
         if (within && s->y == p->height) supported = 1;
         if (!aerial || (s->state==SCENE_SPECIAL_HI && !special_landing) || total_vy > 0 || (int)i == s->ignored_platform) continue;
-        if (!within || previous_y < p->height || s->y > p->height) continue;
+        /* The island solver can stop a fall a hair above the top line; that is
+         * still a landing (else a fall without gravity, Final Cutter, hovers). */
+        float top=p->height+(floor_stop?.01f:0);
+        if (!within || previous_y < p->height || s->y > top) continue;
         float fraction = previous_y == s->y ? 0 : (previous_y-p->height)/(previous_y-s->y);
         float crossing_x = previous_x + (s->x-previous_x)*fraction;
         if (crossing_x < p->left || crossing_x > p->right) continue;

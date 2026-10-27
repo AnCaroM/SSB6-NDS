@@ -142,3 +142,15 @@
   other Mario traces stay byte-identical. The menu's Link viewer is replaced by
   an explore mode (Versus.solo: one fighter, no contact, endless lives). Not
   yet seen on DS. See docs/escudo-prueba19.md.
+- Prueba20: fighter_render sends prebuilt per-part packed GX lists by DMA (per
+  tint); only the two on-screen fighters keep VRAM textures (make_resident).
+  melonDS Link-vs-Link: fighters 5.0->1.7 ms, frame avg 6.1->2.7 ms
+  (tools/bench_melonds.py via the GDB stub; emulated, not hardware). IMA-ADPCM
+  was measured too noisy (12 vs 35 dB SNR), audio stays PCM8 (cap 512 KiB).
+  FTAttributes.size now scales models, hit offsets, spawn/grab, roll TransN
+  and shield (radii unscaled). Kirby: multi-jump (jumps_max 6, JumpAerialF1..5,
+  28-tick gate), Final Cutter (MoveFrame dx/dy TransN, root_motion config),
+  Stone (resist 38, fall -140, MotionScene.force_vy), Inhale (catch through
+  shields, breakout 500, spit 10% at 120 decel 4). New move slots from
+  MOVE_UP_FALL are Kirby-only (Mario's legacy bank holds Wait there). Root-2
+  clips store an identity prefix. Not yet seen on DS. See docs/kirby-prueba20.md.

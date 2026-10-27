@@ -4,8 +4,8 @@
 const MenuControl menu_controls[]={
     {"Cruceta","mover / correr"},{"A","salto / doble"},
     {"X / dir+X","golpes y aereos"},{"Y+X+dir","smash"},
-    {"L, luego X","agarrar / lanzar"},{"B","bola de fuego"},
-    {"Arriba+B","recuperacion"},{"Abajo+B","tornado"},
+    {"L, luego X","agarrar / lanzar"},{"B","especial"},
+    {"Arriba+B","recuperacion"},{"Abajo+B","especial abajo"},
     {"Abajo","bajar / soltar"},{"R","escudo / rodar"},
     {"Tocar abajo","mapa completo"},
     {"START","pausa"},{"SELECT","TU <-> CPU vs CPU"},

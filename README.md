@@ -1,15 +1,16 @@
 # SSB NDS
 
 Port nativo experimental de Super Smash Bros. 64 para **Nintendo DS original y
-DS Lite**. El estado actual permite elegir Mario o Link contra una CPU sencilla
-en Dream Land, con tres vidas, ataques, agarres, proyectiles y recuperación.
+DS Lite**. El estado actual permite elegir Mario, Link o Kirby contra una CPU
+sencilla en Dream Land, con tres vidas, ataques, agarres, proyectiles,
+escudo y recuperación.
 
 Proyecto de código abierto bajo la [licencia MIT](LICENSE) (ver el alcance en
 [NOTICE.md](NOTICE.md)). Las contribuciones son bienvenidas: ver
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 > **English:** experimental native port of Super Smash Bros. 64 to the original
-> Nintendo DS / DS Lite (Mario or Link vs. CPU on Dream Land). No ROM or game
+> Nintendo DS / DS Lite (Mario, Link or Kirby vs. CPU on Dream Land). No ROM or game
 > asset is included: each user converts them locally from their own US v1.0
 > ROM. Source code is MIT-licensed; docs and comments are mostly in Spanish,
 > but issues and pull requests in English are welcome.
@@ -44,6 +45,9 @@ esos recursos y también se excluyen del repositorio y de la CI. Consultar
 - Escudo con desgaste y rotura, rodar, amortiguar la caída y levantarse del
   suelo; modo "Explorar el mapa" con un solo personaje, que sustituye al
   visor de Link ([Prueba19](docs/escudo-prueba19.md), sin probar en DS).
+- Kirby (seis saltos, Corte final, Piedra e Inhalar), dibujo de personajes
+  3 veces más rápido en melonDS y tamaños originales
+  ([Prueba20](docs/kirby-prueba20.md), sin probar en DS).
 - Pruebas de lógica en PC, presupuestos DS y herramientas de inspección.
 - Pantalla de inicio y selección de modo (Prueba11, sin probar en DS);
   ver [docs/menu-prueba11.md](docs/menu-prueba11.md).
@@ -137,7 +141,7 @@ python tools/build_nds.py --devkitpro /opt/devkitpro --demo versus --skeletal-po
 | Y + X + dirección | Smash |
 | L, después X o dirección | Agarre y lanzamiento |
 | Abajo (en suelo) | Agacharse |
-| B / arriba+B / abajo+B | Mario: fuego / recuperación / Tornado; Link: bumerán / giro / bomba |
+| B / arriba+B / abajo+B | Mario: fuego / recuperación / Tornado; Link: bumerán / giro / bomba; Kirby: inhalar / Corte final / Piedra |
 | R | Escudo; con un toque lateral, rodar; justo antes de caer golpeado, amortiguar; en el suelo, levantarse |
 | Tocar la pantalla | Cámara automática / mapa |
 | START | Pausa |

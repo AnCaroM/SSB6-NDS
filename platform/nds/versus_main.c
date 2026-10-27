@@ -10,6 +10,7 @@
 #include "fight_audio.h"
 #include "fighter_render.h"
 #include "link_model.h"
+#include "kirby_model.h"
 #if SCENE_AUTOPLAY && !defined(ANIMATION_REVIEW)
 #include <nds/debug.h>
 /* Benchmark results, read by tools/bench_melonds.py through melonDS's GDB
@@ -45,8 +46,8 @@ volatile unsigned bench_report[2+3*16+4]; /* + stage, fighters, HUD avg, HUD pea
 
 /* Selectable characters: game data, converted model and its GPU textures. */
 static FighterRender renders[MENU_FIGHTER_COUNT];
-static const Fighter *const fighters[MENU_FIGHTER_COUNT]={&fighter_mario,&fighter_link};
-static const FighterModel *const models[MENU_FIGHTER_COUNT]={&mario_model,&link_model};
+static const Fighter *const fighters[MENU_FIGHTER_COUNT]={&fighter_mario,&fighter_link,&fighter_kirby};
+static const FighterModel *const models[MENU_FIGHTER_COUNT]={&mario_model,&link_model,&kirby_model};
 static unsigned fighter_index(const Fighter *f)
 {for(unsigned i=0;i<MENU_FIGHTER_COUNT;++i)if(fighters[i]==f)return i;return 0;}
 static FighterRender *render_of(const Fighter *f) {return &renders[fighter_index(f)];}
@@ -78,6 +79,8 @@ static unsigned clip_for(const Fighter *f,const MotionScene *s)
     if (s->state == SCENE_KNEE) return c->jump;
     if(s->state==SCENE_AIR && s->air_jump) {
         unsigned clip=s->air_jump==1?c->jump_aerial_f:c->jump_aerial_b;
+        /* Multi-jumpers: JumpAerialF1..F5 by jump number. */
+        if(f->attr->jumps_max>2)clip=c->jump_multi[s->jumps_used>=7?4:s->jumps_used<2?0:s->jumps_used-2];
         return s->air_jump_ticks<render_of(f)->model->clips[clip].ticks?clip:c->fall;
     }
     if (s->state == SCENE_AIR) return s->vy > 0 ? c->jump : c->fall;
@@ -92,7 +95,7 @@ static void actor(const Fighter *f,const MotionScene *s,int facing,unsigned clip
     /* Clips driven by scene timers rather than the per-clip age. */
     if(clip==c->jump_aerial_f || clip==c->jump_aerial_b)age=s->air_jump_ticks;
     if(clip==c->cliff_catch || clip==c->squat)age=s->state_ticks;
-    if(clip==up_clip(f) || clip==c->special_fall)age=s->state_ticks;
+    if((clip==up_clip(f) && f->kind!=FIGHTER_KIRBY) || clip==c->special_fall)age=s->state_ticks;
     if(s->state==SCENE_CLIFF) {x=s->cliff_side*2318;y=0;facing=-s->cliff_side;}
     glTranslatef32(floattof32(x/WORLD_UNIT),floattof32(y/WORLD_UNIT),0);
     if(s->state==SCENE_SPECIAL_HI)glRotateZi(s->special_tilt*32768/360);
@@ -153,6 +156,25 @@ static void draw_shield(float x,float y,float radius,unsigned side)
     for(unsigned i=0;i<EMBLEM_SEGMENTS;++i) {glVertex3v16(0,0,0);glVertex3v16(ring[i][0],ring[i][1],0);glVertex3v16(ring[i+1][0],ring[i+1][1],0);}
     glEnd();
     glPopMatrix(1);
+}
+
+/* Kirby's Final Cutter shockwave: provisional translucent crescent (the
+ * original weapon model is not converted). */
+static void draw_beam(const CutterBeam *b)
+{
+    glPushMatrix();glTranslatef32(floattof32(b->x/WORLD_UNIT),floattof32((b->y+110)/WORLD_UNIT),floattof32(.4f));
+    glScalef32(floattof32(125/WORLD_UNIT)*b->facing,floattof32(125/WORLD_UNIT),inttof32(1));
+    glBindTexture(0,0);glPolyFmt(POLY_ALPHA(20)|POLY_CULL_NONE|POLY_ID(56));glColor(RGB15(31,31,20));
+    glBegin(GL_QUADS);
+    for(unsigned i=EMBLEM_SEGMENTS*3/4;i<EMBLEM_SEGMENTS;++i) {
+        const v16 *a=ring[i],*c=ring[i+1];
+        glVertex3v16(a[0]*2458/4096,a[1],0);glVertex3v16(a[0],a[1],0);glVertex3v16(c[0],c[1],0);glVertex3v16(c[0]*2458/4096,c[1],0);
+    }
+    for(unsigned i=0;i<EMBLEM_SEGMENTS/4;++i) {
+        const v16 *a=ring[i],*c=ring[i+1];
+        glVertex3v16(a[0]*2458/4096,a[1],0);glVertex3v16(a[0],a[1],0);glVertex3v16(c[0],c[1],0);glVertex3v16(c[0]*2458/4096,c[1],0);
+    }
+    glEnd();glPopMatrix(1);
 }
 
 /* Mario's fireball: MarioSpecial3 sprite on one textured quad. */
@@ -225,7 +247,7 @@ static void draw_title(int prompt)
         at(6,10,RED,"N   D   S");
         at(10,2,WHITE,"Port experimental de SSB64");
         at(11,2,WHITE,"para Nintendo DS / DS Lite");
-        at(21,1,GREEN,"Prueba 19 - mapa: Dream Land");
+        at(21,1,GREEN,"Prueba 20 - mapa: Dream Land");
         at(22,1,GREEN,"No es el juego completo");
         prompt=1;
     }
@@ -518,7 +540,11 @@ int main(void)
             /* Holding a bomb: shield on the back (itmain pickup sets base parts 21/19). */
             FighterRender *r=render_of(f);
             if(f==&fighter_link && s->bomb.state==BOMB_HELD) {r->part_set=1u<<LINK_PART_21_0;r->part_clear=1u<<LINK_PART_19_0;}
-            if(!match.invulnerable[i] || (match.tick&4))
+            /* Kirby's stone: HideModelPartAll + SetModelPartID(6,2) of StoneStart, held. */
+            if(combat_stone(s)) {r->part_set=1u<<KIRBY_PART_6_2;r->part_clear=1u<<KIRBY_PART_6_0;}
+            /* Inside Kirby (CaptureWaitKirby is invisible). */
+            int inside=match.fighter[1-i].captured && match.fighter[1-i].inhaled && !match.solo;
+            if(!inside && (!match.invulnerable[i] || (match.tick&4)))
                 actor(f,&s->player,s->player.facing,clips[i],age,tint,blend_left[i]?&blends[i]:NULL);
             r->part_set=r->part_clear=0;
             float shield=combat_shield_radius(s);
@@ -527,6 +553,7 @@ int main(void)
                 draw_fireball(s->fireballs[j].x,s->fireballs[j].y,140-s->fireballs[j].life);
             if(s->boomerang.active)draw_boomerang(&s->boomerang);
             if(s->bomb.state!=BOMB_NONE)draw_bomb(&s->bomb);
+            if(s->beam.active)draw_beam(&s->beam);
         }
 #if SCENE_AUTOPLAY && !defined(ANIMATION_REVIEW)
         u16 mark_hud=timerTick(0);bench_actors+=BENCH_US(mark_actors,mark_hud);

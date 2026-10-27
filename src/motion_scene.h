@@ -4,6 +4,7 @@
 #include "stage.h"
 #include "fighter.h"
 #define SCENE_CATCH_TICKS 8
+#define SCENE_MULTI_JUMP_READY 28 /* Kirby JumpAerialF scripts: SetFlag1 at tick 28 */
 
 /* Experimental scene: numeric primitives come from the decomp; the scene
  * scheduler, floor and reduced state machine are provisional integration. */
@@ -32,6 +33,7 @@ typedef struct {
     uint8_t kind;                  /* FighterKind: selects the up-special physics */
     unsigned special_ticks;        /* length of a non-Mario aerial up-special */
     int squat_held;                /* down held this tick (set by the caller): Squat */
+    int force_vy; float forced_vy; /* this tick only: fixed fall speed, no gravity (Kirby's stone) */
 } MotionScene;
 
 void scene_init(MotionScene *scene);
@@ -42,4 +44,6 @@ const char *scene_state_name(SceneState state);
 int scene_special_hi(MotionScene *scene,int stick_x);
 /* Link SpecialAirHi (ftlinkspecialhi.c): vertical launch, then freefall. */
 int scene_special_hi_rise(MotionScene *scene,unsigned ticks);
+/* Kirby Final Cutter: combat drives vy from the clip's TransN. */
+int scene_special_hi_cutter(MotionScene *scene);
 #endif

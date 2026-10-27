@@ -10,10 +10,26 @@ static int ground(const MotionScene *p) {return p->state==SCENE_WAIT || p->state
 static int hurt_air(const MotionScene *p)
 {return p->state==SCENE_AIR || p->state==SCENE_SPECIAL_HI || p->state==SCENE_SPECIAL_FALL || p->state==SCENE_CLIFF || p->state==SCENE_CLIMB;}
 static int mario(const CombatScene *s) {return s->fighter->kind==FIGHTER_MARIO;}
+static int link(const CombatScene *s) {return s->fighter->kind==FIGHTER_LINK;}
+static int kirby(const CombatScene *s) {return s->fighter->kind==FIGHTER_KIRBY;}
 static int tornado(const CombatScene *s,MarioMove m) {return mario(s) && (m==MOVE_TORNADO || m==MOVE_TORNADO_AIR);}
 static int up_special(MarioMove m) {return m==MOVE_UP || m==MOVE_UP_AIR;}
 static const MoveFrame *at(const CombatScene *s,MarioMove m,unsigned t)
 {const MoveDesc *d=&s->fighter->moves[m];if(t>=d->ticks)t=d->ticks-1;return &s->fighter->frames[d->first+t];}
+
+/* ---- Kirby (ftkirby.h, US) ---- */
+#define KIRBY_STONE_DURATION 160        /* FTKIRBY_STONE_DURATION_MAX */
+#define KIRBY_STONE_MIN 18              /* FTKIRBY_STONE_DURATION_MIN (US) */
+#define KIRBY_STONE_RESIST 38           /* FTKIRBY_STONE_HEALTH_MAX (US) */
+#define KIRBY_STONE_FALL_VEL -140.0f
+#define KIRBY_INHALE_RELEASE_LAG 40     /* FTKIRBY_VACUUM_RELEASE_LAG */
+#define KIRBY_INHALE_BREAKOUT 500       /* ftCommonCaptureWaitKirbySetStatus */
+#define KIRBY_SPIT_DAMAGE 10            /* FTKIRBY_VACUUM_THROW_DAMAGE */
+#define KIRBY_SPIT_VEL 120.0f           /* FTKIRBY_VACUUM_THROW_VEL_BASE */
+#define KIRBY_STAR_DECEL 4.0f           /* FTCOMMON_THROWNKIRBYSTAR_DECELERATE */
+#define KIRBY_BEAM_LIFE 20              /* WPFINALCUTTER_LIFETIME */
+#define KIRBY_BEAM_VEL 100.0f           /* WPFINALCUTTER_VEL */
+#define KIRBY_BEAM_OFF_X 200.0f         /* FTKIRBY_FINALCUTTER_OFF_X */
 
 /* ---- Shield, rolls, techs and knockdowns (ftcommon.h constants) ---- */
 #define SHIELD_HEALTH_MAX 55      /* ftmanager.c spawn value */
@@ -230,7 +246,12 @@ void combat_init(CombatScene *s) {combat_init_stage(s,STAGE_GARDEN);}
 int combat_start_move(CombatScene *s,MarioMove m)
 {
     if((unsigned)m>=MOVE_COUNT || s->hitstop)return 0;
-    if(up_special(m) && mario(s)) {
+    if(m>=MOVE_UP_FALL) {
+        /* Kirby statuses entered by the combat logic itself, never by input. */
+        if(!kirby(s))return 0;
+    } else if(up_special(m) && kirby(s)) {
+        if(!scene_special_hi_cutter(&s->player))return 0;
+    } else if(up_special(m) && mario(s)) {
         if(!scene_special_hi(&s->player,s->player.facing*80))return 0;
     } else if(m==MOVE_UP_AIR) {
         /* Link SpecialAirHi: rise, reduced gravity until flag1, then freefall. */
@@ -252,8 +273,13 @@ int combat_start_move(CombatScene *s,MarioMove m)
         s->player.vx=motion_ground_clamp(s->player.vx,17);
         if(air(&s->player))s->player.vy=-7;
     }
+    /* ftKirbySpecialLwStartSetStatus / SpecialAirLwStart: velocities zeroed. */
+    if(kirby(s) && (m==MOVE_TORNADO || m==MOVE_TORNADO_AIR)) {s->player.vx=0;s->player.vy=0;}
+    if(kirby(s) && m==MOVE_INHALE)s->inhale_lag=KIRBY_INHALE_RELEASE_LAG;
     return 1;
 }
+int combat_stone(const CombatScene *s)
+{return kirby(s) && s->attack_frame>=0 && (s->move==MOVE_STONE_HOLD || s->move==MOVE_STONE_FALL);}
 unsigned combat_player_clip(const CombatScene *s)
 {return s->attack_frame<0?0:s->fighter->moves[s->move].clip;}
 int combat_attack_active(const CombatScene *s)
@@ -277,8 +303,19 @@ static void shield_hit(CombatScene *s,unsigned damage,int dir,unsigned sound)
     ++s->shield_hits;s->shield_hit_damage=damage;s->shield_hit_dir=dir;s->shield_hit_sound=sound;
     s->attack_connected=1;s->hitstop=damage/3+5;
 }
-static void damage(CombatScene *s,const MoveHit *h,int dir,float impact_y)
+static void damage(CombatScene *s,const MoveHit *hit,int dir,float impact_y)
 {
+    MoveHit leftover=*hit;const MoveHit *h=hit;
+    if(s->target_resist>0) {
+        /* ftMainCheckGetUpdateDamage: Kirby's stone absorbs the damage; only
+         * what exceeds its HP lands, and then the stone breaks. */
+        int left=s->target_resist-hit->damage;
+        if(left>0) {
+            s->target_resist=left;++s->resisted;s->resisted_damage=(unsigned)hit->damage;
+            s->damage_sound=hit->sound;s->hitstop=hit->damage/3+5;return;
+        }
+        s->target_resist=0;leftover.damage=(int16_t)-left;h=&leftover;
+    }
     float kb=combat_knockback_weight(s->percent,h,s->target.attr->weight),cs=h->cos_angle/4096.0f,sn=h->sin_angle/4096.0f;
     int airborne=hurt_air(&s->target);
     /* US ftCommonDamageGetKnockbackAngle: 43 air / 0..42.5 ground.
@@ -457,6 +494,48 @@ static void bomb_throw_start(CombatScene *s,CombatInput in,int dir,int smash)
     else {vx=smash?65.4f:34.8f;vy=smash?9.2f:9.3f;}
     s->throw_vx=vx*s->player.facing;s->throw_vy=vy;s->item_throw=1;
 }
+/* ---- Kirby: Final Cutter beam, inhale spit/escape (reduced, see docs/kirby-prueba20.md) ---- */
+static void beam_update(CombatScene *s)
+{
+    CutterBeam *b=&s->beam;
+    if(!b->active)return;
+    /* wpKirbyCutter: 100 per tick along the floor for 20 ticks, one hit. */
+    b->x+=b->facing*KIRBY_BEAM_VEL;
+    if(!--b->life || b->x>2318+200 || b->x< -2318-200) {b->active=0;return;}
+    if(b->hit || s->captured || s->target_immune)return;
+    if(shield_blocks(s,b->x,b->y+110,125)) {shield_hit(s,6,b->facing,SOUND_SLASH_M);b->hit=1;return;}
+    if(overlap(&s->target,b->x,b->y+110,125)) {
+        /* dKirbyMain_CutterWeaponAttributes: 6%, 361, scale 50, base 70, SlashM. */
+        MoveHit h={0};h.damage=6;h.angle=361;h.scale=50;h.base=70;h.sound=SOUND_SLASH_M;
+        damage(s,&h,b->facing,b->y+110);b->hit=1;
+    }
+}
+static void kirby_spit(CombatScene *s)
+{
+    /* ftKirbySpecialNThrow: 10% then ThrownKirbyStar at 120, slowing by 4 per
+     * tick. Reduced to a fixed launch (versus decays it by 1.7*v/kb = 4). */
+    int dir=s->attack_facing;
+    s->captured=0;s->inhaled=0;
+    s->target.x=s->player.x+dir*150;s->target.y=s->player.y+40;
+    s->target.state=SCENE_AIR;s->target.platform=-1;s->target.vx=s->target.vy=0;s->target.facing=-dir;
+    s->target.jumps_used=1;
+    s->damage_kb=KIRBY_SPIT_VEL*1.7f/KIRBY_STAR_DECEL;s->damage_vx=dir*KIRBY_SPIT_VEL;s->damage_vy=0;
+    s->hitstun=(unsigned)(KIRBY_SPIT_VEL/KIRBY_STAR_DECEL);s->damage_pose=13;
+    s->damage_amount=KIRBY_SPIT_DAMAGE;s->damage_sound=SOUND_NONE;
+    s->percent+=KIRBY_SPIT_DAMAGE;if(s->percent>999)s->percent=999;
+    ++s->hits;s->hitstop=0;
+}
+static void kirby_escape(CombatScene *s)
+{
+    /* ftCommonCaptureWaitKirby breakout: dFTCommonCaptureKirbyKnockbackCapture
+     * (angle 80, scale 100, fixed weight 60) on the escapee. */
+    MoveHit h={0};h.angle=80;h.scale=100;h.weight=60;h.cos_angle=711;h.sin_angle=4034;h.sound=SOUND_NONE;
+    s->captured=0;s->inhaled=0;s->target.x=s->player.x+s->attack_facing*150;s->target.y=s->player.y;
+    damage(s,&h,s->attack_facing,s->target.y+180);s->attack_frame=-1;
+}
+static void kirby_stone_end(CombatScene *s)
+{s->stone=0;s->stone_resist=0;combat_start_move(s,MOVE_STONE_END);}
+
 static MarioMove select_normal(const CombatScene *s,CombatInput in)
 {
     if(s->player.state==SCENE_CLIFF)return in.smash?MOVE_LEDGE_SLOW_START:MOVE_LEDGE_START;
@@ -514,7 +593,7 @@ void combat_update(CombatScene *s,CombatInput in)
     if(dir)s->brake_ticks=0;
     if(s->dash_ticks)++s->run_age;
     if(s->action && actions)action_update(s,in,pressed,special,grab,shield_pressed);
-    if(s->player.state==SCENE_SPECIAL_HI && s->attack_frame<0) {
+    if(s->player.state==SCENE_SPECIAL_HI && s->attack_frame<0 && !kirby(s)) {
         s->move=mario(s)?MOVE_UP:MOVE_UP_AIR;s->attack_frame=(int)s->player.state_ticks;
         s->attack_facing=s->player.facing;s->connected_strikes=0;s->spawned=0;
     }
@@ -528,6 +607,24 @@ void combat_update(CombatScene *s,CombatInput in)
                 combat_start_move(s,old==MOVE_LEDGE_START?MOVE_LEDGE:MOVE_LEDGE_SLOW);
             else if(old==MOVE_GRAB && s->captured)combat_start_move(s,MOVE_GRAB_HOLD);
             else if(old==MOVE_GRAB_HOLD && s->captured)s->attack_frame=s->fighter->moves[old].ticks-1;
+            /* Kirby's ThrowF releases on landing (ThrowFLanding, not converted):
+             * a throw that ends still holding lets go here. */
+            else if((old==MOVE_THROW_F || old==MOVE_THROW_B) && s->captured)release_throw(s);
+            else if(kirby(s))switch(old) {
+            /* Kirby: SpecialHi -> SpecialAirHiFall while airborne; held poses;
+             * inhale start -> loop; eat -> wait (looped while full). */
+            case MOVE_UP:case MOVE_UP_AIR:
+                if(s->player.state==SCENE_SPECIAL_HI)combat_start_move(s,MOVE_UP_FALL);
+                break;
+            case MOVE_UP_FALL:case MOVE_STONE_HOLD:case MOVE_STONE_FALL:
+                if(old!=MOVE_UP_FALL || s->player.state==SCENE_SPECIAL_HI)s->attack_frame=s->fighter->moves[old].ticks-1;
+                break;
+            case MOVE_FIRE:case MOVE_FIRE_AIR:combat_start_move(s,MOVE_INHALE);s->inhale_lag=KIRBY_INHALE_RELEASE_LAG;break;
+            case MOVE_INHALE:s->attack_frame=0;s->connected_strikes=0;break;
+            case MOVE_INHALE_EAT:if(s->captured)combat_start_move(s,MOVE_INHALE_WAIT);break;
+            case MOVE_INHALE_WAIT:if(s->captured)s->attack_frame=0;break;
+            default:break;
+            }
             if(tornado(s,old) && air(&s->player))s->tornado_charge=0;
         }
     }
@@ -537,14 +634,43 @@ void combat_update(CombatScene *s,CombatInput in)
             combat_start_move(s,dir*s->attack_facing<0?MOVE_THROW_B:MOVE_THROW_F);
         else if(s->capture_age>90) {s->captured=0;s->attack_frame=-1;s->target.state=SCENE_AIR;}
     }
+    if(kirby(s) && s->attack_frame>=0) {
+        if(s->move==MOVE_INHALE) {
+            /* ftKirbySpecialNLoopCheckContinueLoop: 40 ticks minimum, then while B held. */
+            if(s->inhale_lag)--s->inhale_lag;
+            else if(!in.special)combat_start_move(s,MOVE_INHALE_END);
+        } else if(s->captured && s->inhaled) {
+            if(--s->inhale_breakout<=0)kirby_escape(s);
+            else if(s->move==MOVE_INHALE_WAIT) {
+                if(dir)s->player.facing=s->attack_facing=dir; /* SpecialNTurn, reduced */
+                if(pressed || special)combat_start_move(s,MOVE_INHALE_THROW); /* copy (B/down) spits too */
+            }
+        } else if(s->move==MOVE_TORNADO || s->move==MOVE_TORNADO_AIR) {
+            /* flag1 of StoneStartGround/Air: the stone (resist 38 HP, 160 ticks). */
+            if(at(s,s->move,(unsigned)s->attack_frame)->flags&2) {
+                s->stone=KIRBY_STONE_DURATION;s->stone_age=0;s->stone_resist=KIRBY_STONE_RESIST;
+                combat_start_move(s,air(&s->player)?MOVE_STONE_FALL:MOVE_STONE_HOLD);
+            }
+        } else if(s->move==MOVE_STONE_HOLD || s->move==MOVE_STONE_FALL) {
+            /* ftKirbySpecialLwCheckRelease: B after the minimum, or time out. */
+            ++s->stone_age;
+            if(!s->stone_resist || !--s->stone || (special && s->stone_age>=KIRBY_STONE_MIN))kirby_stone_end(s);
+        }
+    }
     if(s->attack_frame<0 && !s->action) {
         int jump_pressed=in.motion.jump_held && !s->player.jump_was_held;
         if(actions && in.shield && s->shield_health>0 && ground(&s->player) && !s->item_throw && !s->captured && !jump_pressed) {
             /* Z held: GuardOn; tapped while dashing: forward roll (ftCommonEscapeCheckInterruptDash). */
             if(s->dash_ticks && shield_pressed)combat_action_start(s,ACTION_ESCAPE_F);
             else combat_action_start(s,ACTION_GUARD_ON);
-        } else if(special && !mario(s) && s->item_throw) {
-        } else if(special && !mario(s)) {
+        } else if(special && kirby(s)) {
+            /* Up: Final Cutter; down: Stone; neutral: Inhale. */
+            if(dir)s->player.facing=dir;
+            if(in.up)combat_start_move(s,air(&s->player)?MOVE_UP_AIR:MOVE_UP);
+            else if(in.down)combat_start_move(s,air(&s->player)?MOVE_TORNADO_AIR:MOVE_TORNADO);
+            else combat_start_move(s,air(&s->player)?MOVE_FIRE_AIR:MOVE_FIRE);
+        } else if(special && link(s) && s->item_throw) {
+        } else if(special && link(s)) {
             if(dir)s->player.facing=dir;
             if(in.up)combat_start_move(s,air(&s->player)?MOVE_UP_AIR:MOVE_UP);
             else if(in.down) {
@@ -556,7 +682,7 @@ void combat_update(CombatScene *s,CombatInput in)
                 s->boomerang_smash=in.smash;s->boomerang_empty=s->boomerang.active;
                 combat_start_move(s,air(&s->player)?MOVE_FIRE_AIR:MOVE_FIRE);
             }
-        } else if(pressed && !mario(s) && s->bomb.state==BOMB_HELD && !s->item_throw) {
+        } else if(pressed && link(s) && s->bomb.state==BOMB_HELD && !s->item_throw) {
             bomb_throw_start(s,in,dir,in.smash);
         } else if(special) {
             MarioMove m=in.up?MOVE_UP:in.down?(air(&s->player)?MOVE_TORNADO_AIR:MOVE_TORNADO):
@@ -598,6 +724,15 @@ void combat_update(CombatScene *s,CombatInput in)
             motion.stick_x=0;
         }
         if(s->move==MOVE_GRAB_HOLD || s->move==MOVE_THROW_F || s->move==MOVE_THROW_B)s->player.vx=0;
+        if(kirby(s)) {
+            /* Final Cutter: vertical speed = the clip's TransN delta (ApplyAirVelTransNYZ);
+             * SpecialAirHiFall keeps the last one. Landing: ground TransN. */
+            if(s->move==MOVE_UP || s->move==MOVE_UP_AIR)s->player.vy=f->dy;
+            if(s->move==MOVE_UP_LAND) {s->player.x+=f->dx*s->attack_facing;s->player.vx=0;}
+            if(s->move==MOVE_STONE_FALL) {s->player.vx=0;s->player.force_vy=1;s->player.forced_vy=KIRBY_STONE_FALL_VEL;}
+            if(s->move==MOVE_STONE_HOLD || s->move==MOVE_STONE_END || s->move==MOVE_INHALE || s->move==MOVE_INHALE_EAT ||
+               s->move==MOVE_INHALE_WAIT || s->move==MOVE_INHALE_THROW || s->move==MOVE_INHALE_END)s->player.vx=ground(&s->player)?0:s->player.vx;
+        }
     } else if(s->dash_ticks && dir && ground(&s->player)) {
         /* Bypass the walking clamp: scene_step otherwise replaces 44 with 24. */
         s->player.vx=dir*s->fighter->attr->dash_velocity;motion.stick_x=0;s->player.facing=dir;
@@ -608,6 +743,7 @@ void combat_update(CombatScene *s,CombatInput in)
     if(in.drop && !f)scene_drop_through(&s->player);
     s->player.squat_held=in.down && !f;
     scene_step(&s->player,motion);
+    s->player.force_vy=0;
     if(air(&s->player))s->player.facing=previous_facing;
     if(f)s->player.facing=s->attack_facing;
     s->facing=s->player.facing;
@@ -616,10 +752,17 @@ void combat_update(CombatScene *s,CombatInput in)
     }
     if(s->player.landings!=old_landings && (s->action==ACTION_SHIELD_BREAK_FLY || s->action==ACTION_SHIELD_BREAK_FALL))
         combat_action_start(s,ACTION_SHIELD_BREAK_DOWN_U);
+    if(kirby(s) && s->player.landings!=old_landings && s->attack_frame>=0) {
+        /* Final Cutter lands into SpecialHiLanding (shockwave); a falling stone keeps going on the ground. */
+        if(s->move==MOVE_UP || s->move==MOVE_UP_AIR || s->move==MOVE_UP_FALL)combat_start_move(s,MOVE_UP_LAND);
+        else if(s->move==MOVE_STONE_FALL)combat_start_move(s,MOVE_STONE_HOLD);
+        f=at(s,s->move,(unsigned)s->attack_frame);
+    }
     if(s->player.landings!=old_landings || s->player.cliff_grabs!=old_grabs) {
         s->tornado_charge=1;
         if(s->attack_frame>=0 && (s->player.cliff_grabs!=old_grabs ||
-           (s->move>=MOVE_NAIR && s->move<=MOVE_DAIR) || (up_special(s->move) && s->player.landings!=old_landings))) {
+           (s->move>=MOVE_NAIR && s->move<=MOVE_DAIR) || (up_special(s->move) && s->player.landings!=old_landings) ||
+           (kirby(s) && s->move==MOVE_UP_FALL))) {
             s->attack_frame=-1;f=0;
         }
     }
@@ -630,6 +773,8 @@ void combat_update(CombatScene *s,CombatInput in)
         if(s->hitstun || ((s->player.state==SCENE_CLIFF || s->player.state==SCENE_CLIMB) &&
             s->player.cliff_side==(s->target.x<0?-1:1)))s->target.cliff_cooldown=2;
         scene_step(&s->target,(SceneInput){0,0});s->damage_vx=motion_ground_friction(s->damage_vx,.8f);
+    } else if(s->captured && s->inhaled) {
+        s->target.x=s->player.x;s->target.y=s->player.y;s->target.vx=s->target.vy=0; /* inside Kirby */
     } else if(s->captured) {
         /* Original joint28 attachment position; target orientation remains a
          * reduced 2D approximation of CapturePulledRotateScale. */
@@ -645,18 +790,26 @@ void combat_update(CombatScene *s,CombatInput in)
 void combat_resolve(CombatScene *s)
 {
     const MoveFrame *f=s->attack_frame>=0?at(s,s->move,(unsigned)s->attack_frame):0;
-    if(s->captured && f) {
+    if(s->captured && s->inhaled) {
+        s->target.x=s->player.x;s->target.y=s->player.y;s->target.vx=s->target.vy=0;
+    } else if(s->captured && f) {
         s->target.x=s->player.x+s->attack_facing*f->grab_x;
         s->target.y=s->player.y+f->grab_y-180;
         s->target.vx=s->target.vy=0;
     }
     if(f) {
         if(mario(s) && (s->move==MOVE_FIRE || s->move==MOVE_FIRE_AIR) && !s->spawned && (f->flags&1)) {spawn(s,f);s->spawned=1;}
-        if(!mario(s) && (s->move==MOVE_FIRE || s->move==MOVE_FIRE_AIR) && !s->spawned && (f->flags&1)) {
+        if(link(s) && (s->move==MOVE_FIRE || s->move==MOVE_FIRE_AIR) && !s->spawned && (f->flags&1)) {
             if(!s->boomerang_empty && !s->boomerang.active)boomerang_spawn(s);
             s->spawned=1;
         }
-        if(!mario(s) && (s->move==MOVE_TORNADO || s->move==MOVE_TORNADO_AIR) && !s->spawned && (f->flags&1)) {
+        if(kirby(s) && s->move==MOVE_UP_LAND && !s->spawned && (f->flags&1)) {
+            /* SpecialHiLanding flag0: beam at TopN + 200 forward. */
+            CutterBeam *b=&s->beam;b->active=1;b->hit=0;b->life=KIRBY_BEAM_LIFE;b->facing=s->attack_facing;
+            b->x=s->player.x+b->facing*KIRBY_BEAM_OFF_X;b->y=s->player.y;s->spawned=1;
+        }
+        if(kirby(s) && s->move==MOVE_INHALE_THROW && s->captured && s->inhaled && (f->flags&1 || s->attack_frame>=7))kirby_spit(s);
+        if(link(s) && (s->move==MOVE_TORNADO || s->move==MOVE_TORNADO_AIR) && !s->spawned && (f->flags&1)) {
             if(s->bomb.state==BOMB_NONE) {
                 Bomb *m=&s->bomb;memset(m,0,sizeof *m);m->state=BOMB_HELD;m->life=BOMB_LIFE;
             }
@@ -667,18 +820,22 @@ void combat_resolve(CombatScene *s)
             const MoveHit *h=&s->fighter->hits[f->first+i];uint64_t bit=UINT64_C(1)<<h->strike;
             if(s->connected_strikes&bit)continue;
             if(!(h->ground_air&(hurt_air(&s->target)?1:2)))continue;
-            /* Shields stop everything but grabs (ftMainSearchHitFighter order). */
-            if(s->move!=MOVE_GRAB && shield_blocks(s,s->player.x+h->x*s->attack_facing,s->player.y+h->y,h->radius)) {
+            /* Shields stop everything but grabs and inhale (ftMainSearchHitFighter order). */
+            int catches=s->move==MOVE_GRAB || (kirby(s) && s->move==MOVE_INHALE);
+            if(!catches && shield_blocks(s,s->player.x+h->x*s->attack_facing,s->player.y+h->y,h->radius)) {
                 s->connected_strikes|=bit;
                 shield_hit(s,(unsigned)h->damage,(s->target.x-s->player.x)>=0?1:-1,h->sound);
                 continue;
             }
             if(overlap(&s->target,s->player.x+h->x*s->attack_facing,s->player.y+h->y,h->radius)) {
                 s->connected_strikes|=bit;s->attack_connected=1;
-                if(s->move==MOVE_GRAB) {
+                if(catches) {
                     s->captured=1;s->capture_age=0;s->damage_vx=0;
                     s->target.facing=-s->attack_facing;
-                    combat_start_move(s,MOVE_GRAB_HOLD);
+                    if(s->move==MOVE_INHALE) {
+                        /* SpecialNCatch -> Eat: the victim is held inside (CaptureWaitKirby). */
+                        s->inhaled=1;s->inhale_breakout=KIRBY_INHALE_BREAKOUT;combat_start_move(s,MOVE_INHALE_EAT);
+                    } else combat_start_move(s,MOVE_GRAB_HOLD);
                     break;
                 }
                 else damage(s,h,(s->target.x-s->player.x)>=0?1:-1,s->player.y+h->y);
@@ -686,7 +843,8 @@ void combat_resolve(CombatScene *s)
         }
     }
     projectiles(s);
-    if(!mario(s)) {boomerang_update(s);bomb_update(s);}
+    if(link(s)) {boomerang_update(s);bomb_update(s);}
+    if(kirby(s))beam_update(s);
 }
 void combat_step(CombatScene *s,SceneInput in,int attack,int drop)
 {CombatInput c={0};c.motion=in;c.attack=attack;c.drop=drop;combat_update(s,c);}

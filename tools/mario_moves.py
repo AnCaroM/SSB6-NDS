@@ -27,7 +27,12 @@ SPECS=[
 ('LEDGE_SLOW_START',582,'CliffAttackSlow1'),('LEDGE_SLOW',583,'CliffAttackSlow2'),
 ('GRAB_HOLD',562,None),
 # Air up-special (Link's SpecialAirHi differs; Mario shares SuperJumpPunch).
-('UP_AIR',637,'SuperJumpPunchAir_0x16CC')]
+('UP_AIR',637,'SuperJumpPunchAir_0x16CC'),
+# Prueba20 Kirby statuses (Final Cutter fall/landing, Stone, Inhale). Mario
+# has no such status: the slots hold his Wait pose and are never started.
+('UP_FALL',499,None),('UP_LAND',499,None),('STONE_HOLD',499,None),('STONE_FALL',499,None),
+('STONE_END',499,None),('INHALE',499,None),('INHALE_EAT',499,None),('INHALE_WAIT',499,None),
+('INHALE_THROW',499,None),('INHALE_END',499,None)]
 
 def us_source(text):
     result=[];stack=[];active=True

@@ -10,6 +10,8 @@ typedef struct { float x,y,dx,dy,speed,turn; unsigned life,homing,age; int activ
 /* Link's bomb item (itlinkbomb.c, reduced). */
 typedef enum { BOMB_NONE, BOMB_HELD, BOMB_FLYING, BOMB_RESTING, BOMB_EXPLODING } BombState;
 typedef struct { float x,y,vx,vy; unsigned life,age,landings; BombState state; int hit; } Bomb;
+/* Kirby's Final Cutter shockwave (wpkirbycutter.c, reduced to the floor line). */
+typedef struct { float x,y; unsigned life; int facing,active,hit; } CutterBeam;
 
 /* Reduced training integration, with an inert target. Collision volumes are
  * proxies, not the original bone-linked hitboxes or full damage state machine. */
@@ -41,6 +43,16 @@ typedef struct {
     int shield_was_held,shield_age,own_percent,mash_stick; /* shield_age: ticks since the last press */
     float target_shield,target_shield_x,target_shield_y;   /* target's shield (snapshot), radius 0 = none */
     unsigned shield_hits,shield_hit_damage,shield_hit_sound;int shield_hit_dir;
+    /* Kirby (reduced ftkirbyspecialhi/lw/n.c): beam, stone and inhale. */
+    CutterBeam beam;
+    unsigned stone;                 /* stone ticks left (FTKIRBY_STONE_DURATION_MAX), 0 none */
+    unsigned stone_age;
+    int stone_resist;               /* this fighter's remaining stone HP */
+    int target_resist;              /* target's stone HP (snapshot), 0 none */
+    unsigned resisted,resisted_damage; /* hits absorbed by the target's stone */
+    int inhaled;                    /* the captured target is inside Kirby */
+    int inhale_breakout;            /* victim's escape counter (CaptureWaitKirby 500) */
+    unsigned inhale_lag;            /* SpecialNLoop release lag */
 } CombatScene;
 
 void combat_init(CombatScene *scene);
@@ -68,4 +80,6 @@ float combat_shield_radius(const CombatScene *scene); /* 0 unless the shield is 
 int combat_intangible(const CombatScene *scene);      /* SetHitStatusAll(3) window */
 /* Victim side of a blocked hit: shield stun/push-back or shield break. */
 void combat_shield_hit(CombatScene *scene,unsigned damage,int dir);
+/* Kirby is a stone (the renderer swaps in the stone model part). */
+int combat_stone(const CombatScene *scene);
 #endif

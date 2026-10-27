@@ -71,7 +71,12 @@ SLOT_MOTIONS={'JAB1':['Attack11'],'JAB2':['Attack12'],'JAB3':['Attack13','Attack
     'TORNADO_AIR':['SpecialAirLw','SpecialAirLwStart'],'GETUP_D':['DownAttackD'],
     'GETUP_U':['DownAttackU'],'LEDGE_START':['CliffAttackQuick1'],'LEDGE':['CliffAttackQuick2'],
     'LEDGE_SLOW_START':['CliffAttackSlow1'],'LEDGE_SLOW':['CliffAttackSlow2'],'GRAB_HOLD':['CatchPull'],
-    'UP_AIR':['SpecialAirHi']}
+    'UP_AIR':['SpecialAirHi'],
+    # Kirby statuses; other fighters hold a pose they never start.
+    'UP_FALL':['SpecialAirHiFall','FallSpecial'],'UP_LAND':['SpecialHiLanding','LandingLight'],
+    'STONE_HOLD':['SpecialLwHold','Wait'],'STONE_FALL':['SpecialAirLwHold','Fall'],'STONE_END':['SpecialLwEnd','Wait'],
+    'INHALE':['SpecialNLoop','Wait'],'INHALE_EAT':['SpecialNEat','Wait'],'INHALE_WAIT':['SpecialNWait','Wait'],
+    'INHALE_THROW':['SpecialNThrow','Wait'],'INHALE_END':['SpecialNEnd','Wait']}
 FIGHTERS={
     # size: FTAttributes.size (US), the fighter DObj scale. The game scales the
     # model, its hit offsets and TransN movement by it; hit radii are not.
@@ -104,9 +109,14 @@ FIGHTERS={
                  table='dFTKirbyMotionDescs',
                  special=['Attack100Start','Attack100Loop','Attack100End','JumpAerialF1','JumpAerialF2','JumpAerialF3',
                           'JumpAerialF4','JumpAerialF5','SpecialHi','SpecialHiLanding','SpecialAirHi','SpecialAirHiFall',
-                          'SpecialLwStart','SpecialLwHold','SpecialLwEnd','SpecialAirLwStart','SpecialAirLwHold','SpecialAirLwFall',
-                          'SpecialAirLwLanding','SpecialNStart','SpecialNLoop','SpecialNEnd','SpecialNEat','SpecialNThrow','SpecialNWait',
-                          'SpecialAirNStart','SpecialAirNLoop','SpecialAirNEnd'],
+                          'SpecialLwStart','SpecialLwHold','SpecialLwEnd','SpecialAirLwStart','SpecialAirLwHold',
+                          'SpecialNStart','SpecialNLoop','SpecialNEnd','SpecialNEat','SpecialNThrow','SpecialNWait'],
+                 # No JumpAerialF/B: his air jumps are JumpAerialF1..F5 (multi-jump).
+                 aliases={'JumpAerialF':'JumpAerialF1','JumpAerialB':'JumpAerialF1'},
+                 multi_jump=['JumpAerialF1','JumpAerialF2','JumpAerialF3','JumpAerialF4','JumpAerialF5'],
+                 # Final Cutter moves by its TransN (ftKirbySpecialHiProcPhysics); the
+                 # air version scales it by .8 (TopN scale during ApplyAirVelTransNYZ).
+                 root_motion={'UP':1.0,'UP_AIR':0.8,'UP_LAND':1.0},
                  parts={}),
 }
 
@@ -330,8 +340,8 @@ def throw_hits(cfg,motions):
     text=fm.us_source((fm.UPSTREAM/f'src/relocData/{cfg["motion"]}').read_text());out=[]
     for motion in ('ThrowF','ThrowB'):
         body=re.search(r'(?:ftMotionCommand|u32)\s+'+motions[motion]['script']+r'\[\]\s*=\s*\{(.*?)\n\};',text,re.S)[1]
-        desc=re.search(r'SetThrow\(\(u32\)(\w+)\)',body)[1]
-        row=re.search(r'FTThrowHitDesc '+desc+r'\[\]\s*=\s*\{\s*\{([^}]*)\}',text)[1]
+        desc=re.search(r'SetThrow\((?:\(u32\))?(\w+)\)',body)[1]
+        row=re.search(r'FTThrowHitDesc '+desc+r'\[\d*\]\s*=\s*\{\s*\{([^}]*)\}',text)[1]
         status,damage,angle,scale,weight,base,_=(int(x,0) for x in row.split(','))
         a=math.radians(angle)
         out.append([0,0,0,damage,angle,scale,weight,base,0,3,round(math.cos(a)*4096),round(math.sin(a)*4096),255])
@@ -350,9 +360,14 @@ def export_moves(name,cfg,clips,float_frames,parents,motions,tables):
         values,root=float_frames[index];ticks=src['ticks']
         script=None if slot=='GRAB_HOLD' else motions[motion]['script']
         sequence=move_frames(tables,script,ticks)
-        first=len(allframes)
+        first=len(allframes);motion_scale=cfg.get('root_motion',{}).get(slot)
         for t,frame in enumerate(sequence):
             rows=values[min(t,len(values)-1)].copy()
+            dx=dy=0
+            if motion_scale is not None and root==2:
+                # Per-tick TransN delta (forward z, up y) x size: the game's velocity.
+                now=values[min(t,len(values)-1)][len(parents)];before=values[min(t-1,len(values)-1)][len(parents)] if t else now*0
+                dx=round(float(now[2]-before[2])*size*motion_scale);dy=round(float(now[1]-before[1])*size*motion_scale)
             if root==2:rows[len(parents)]=identity  # movement TransN: gameplay moves the fighter
             w=world(rows,parents,_float_matrix);start=len(hits)
             for hit in frame['hits']:
@@ -364,7 +379,7 @@ def export_moves(name,cfg,clips,float_frames,parents,motions,tables):
                              round(math.cos(a)*4096),round(math.sin(a)*4096),fs.hit_sound(v[16],v[15])])
             spawn=w[cfg['spawn']]@np.array([0,0,0,1.0]);anchor=w[cfg['grab']]@np.array([0,0,0,1.0])
             allframes.append([start,len(hits)-start,frame['flags'],round(spawn[2]*size),round(spawn[1]*size),
-                              round(anchor[2]*size),round(anchor[1]*size),'{%d,%d}'%tuple(frame['sounds'])])
+                              round(anchor[2]*size),round(anchor[1]*size),'{%d,%d}'%tuple(frame['sounds']),dx,dy])
         descs.append(f'{{"{slot}",{position[motion]},{ticks},{first}}}')
     damage=['DamageHi1','DamageHi2','DamageHi3','DamageN1','DamageN2','DamageN3','DamageLw1','DamageLw2','DamageLw3',
             'DamageAir1','DamageAir2','DamageAir3','DamageFlyHi','DamageFlyN','DamageFlyLw','DamageFlyTop','DamageFlyRoll']
@@ -381,8 +396,9 @@ def export_moves(name,cfg,clips,float_frames,parents,motions,tables):
     lines+=['static const MoveDesc move_descs[MOVE_COUNT]={'+','.join(descs)+'};']
     lines+=['static const unsigned damage_ticks[17]={'+','.join(str(tick_of(m)) for m in damage)+'};']
     actions,shield=export_actions(clips,float_frames,parents,motions,tables,cfg['size']);lines+=actions
+    multi=[clip(m) for m in cfg.get('multi_jump',['JumpAerialF']*5)]
     lines+=[f'const Fighter fighter_{name}={{"{cfg["Name"]}",{cfg["kind"]},&{cfg["attr"]},move_hits,move_frames,move_descs,damage_ticks,',
-            '    {'+','.join(map(str,clipmap))+',{'+','.join(str(clip(m)) for m in damage)+'}},',
+            '    {'+','.join(map(str,clipmap))+',{'+','.join(str(clip(m)) for m in damage)+'},{'+','.join(map(str,multi))+'}},',
             '    {'+','.join(map(str,sounds))+','+smash+','+str(SOUND[snd['down_bounce']])+'},',
             '    {'+','.join('{'+','.join(map(str,h))+'}' for h in throws)+'},',
             f'    actions,{shield[0]},{shield[1]}}};']
@@ -413,7 +429,7 @@ def convert(name,check_mario=False):
             if motions.get(motion,{}).get('file') and motion not in wanted:wanted.append(motion)
     used={(j,i) for j,i in base.items() if i>=0}
     for motion in wanted:
-        for _,op,args in part_events(tables,motions[motion]['script'],10000):
+        for _,op,args in part_events(tables,motions[motion]['script'] if motions[motion]['file'] or motion not in cfg.get('aliases',{}) else motions[cfg['aliases'][motion]]['script'],10000):
             if op.endswith('SetModelPartID'):
                 j=cfg['itemlight'] if args[0]==-2 else args[0]
                 if j in descs and args[1]>=0:used.add((j,args[1]))
@@ -455,16 +471,22 @@ def convert(name,check_mario=False):
     lines=['/* Generated from the user ROM; do not distribute. */','#include <stddef.h>','#include "fighter_model.h"','#include "fighter.h"']
     for motion in wanted:
         info=motions[motion]
+        if info['file'] is None and motion in cfg.get('aliases',{}):info=motions[cfg['aliases'][motion]]
         if info['file'] is None:raise ValueError(f'{Name} {motion} has no animation')
         key=(info['file'],info['flags']&(fm.INSERT_TRANSN|fm.INSERT_XROTN|fm.CATCH_JOINT),motion in LEDGE_PREFIX,motion in SINGLE_FRAME)
         if key in seen:clips.append(dict(motion=motion,same=seen[key]));continue
         anim,aword=rom_file(rom,info['file'],decoder,scratch)
         frames,ticks,looping,root=sample(anim,aword,depths,defaults,info['flags'],motion in LEDGE_PREFIX,motion in SINGLE_FRAME,roots)
-        values=np.array(frames,dtype=np.float64);q=quantize(values);flat=q.reshape(len(q),-1)
+        values=np.array(frames,dtype=np.float64);drawn=values.copy()
+        # Movement TransN (root 2) is applied by gameplay, never drawn: store an
+        # identity prefix (Kirby's ThrowF leap exceeds the int16 channel range).
+        # float_frames keeps the original for move and roll velocities.
+        if root==2:drawn[:,len(parents)]=[0,0,0,0,0,0,1,1,1]
+        q=quantize(drawn);flat=q.reshape(len(q),-1)
         varying=[c for c in range(flat.shape[1]) if (flat[:,c]!=flat[0,c]).any()]
         error=0.0
         for f in range(len(q)):
-            exact=world(values[f],parents,_float_matrix);approx=world(q[f],parents,local_matrix)
+            exact=world(drawn[f],parents,_float_matrix);approx=world(q[f],parents,local_matrix)
             for j in range(len(parents)):
                 sel=ljoint==j
                 if sel.any():

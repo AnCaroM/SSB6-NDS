@@ -20,8 +20,8 @@ def main():
                ZIG_LOCAL_CACHE_DIR=str(ROOT / '.cache/zig-local'))
     flags = ['-std=c11', '-O2', '-UNDEBUG', '-Wall', '-Wextra', '-Werror', '-ffp-contract=off',
              '-fno-fast-math', '-Isrc', 'src/motion.c', 'src/stage.c', 'src/motion_scene.c', 'src/fighter_attr.c', 'src/combat.c','src/versus.c', 'src/animation_review.c', 'src/camera.c', 'src/recovery_demo.c', 'src/special_hi.c',
-             'build/fighters/mario/mario_model.c', 'build/fighters/link/link_model.c']
-    for fighter in ('mario','link'):
+             'build/fighters/mario/mario_model.c', 'build/fighters/link/link_model.c', 'build/fighters/kirby/kirby_model.c']
+    for fighter in ('mario','link','kirby'):
         subprocess.run([sys.executable,str(ROOT/'tools/convert_fighter.py'),'--fighter',fighter],check=True)
     test = build / ('test_scene' + suffix)
     trace = build / ('scene_trace' + suffix)
@@ -37,6 +37,7 @@ def main():
                            ('tests/test_damage.c',build/('test_damage'+suffix)),
                            ('tests/test_link.c',build/('test_link'+suffix)),
                            ('tests/test_guard.c',build/('test_guard'+suffix)),
+                           ('tests/test_kirby.c',build/('test_kirby'+suffix)),
                            ('tests/test_animation_review.c',build/('test_animation_review'+suffix)),
                            ('tests/test_camera.c',build/('test_camera'+suffix)), ('src/scene_trace.c', trace)]:
         subprocess.run(compiler + flags + [source, '-o', str(output), '-lm'],
@@ -53,6 +54,7 @@ def main():
     result += subprocess.check_output([str(build/('test_damage'+suffix))], text=True)
     result += subprocess.check_output([str(build/('test_link'+suffix))], text=True)
     result += subprocess.check_output([str(build/('test_guard'+suffix))], text=True)
+    result += subprocess.check_output([str(build/('test_kirby'+suffix))], text=True)
     result += subprocess.check_output([str(build/('test_animation_review'+suffix))], text=True)
     pose_test=build/('test_pose_bank'+suffix)
     subprocess.run(compiler+['-std=c11','-O2','-UNDEBUG','-DMARIO_COMPACT_POSES=1',

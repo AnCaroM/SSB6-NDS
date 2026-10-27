@@ -10,7 +10,7 @@ typedef enum {MENU_STAY,MENU_PLAY_TEST,MENU_PLAY_DEMO,MENU_PLAY_EXPLORE} MenuAct
 #define MENU_FIRST_ROW 8
 #define MENU_ROW_SPACING 3
 /* Character screen: one row per side, then a start row (console rows). */
-#define MENU_FIGHTER_COUNT 2  /* 0 Mario, 1 Link */
+#define MENU_FIGHTER_COUNT 3  /* 0 Mario, 1 Link, 2 Kirby */
 #define MENU_PICK_ROW 8
 #define MENU_PICK_SPACING 4
 #define MENU_START_ROW 17

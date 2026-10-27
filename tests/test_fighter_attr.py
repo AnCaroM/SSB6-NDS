@@ -9,7 +9,8 @@ FIELDS={'walk_speed_mul':'walk_speed_mul','traction':'traction','run_speed':'run
         'jump_height_mul':'jump_height_mul','jump_height_base':'jump_height_base','jumpaerial_vel_x':'jumpaerial_vel_x',
         'jumpaerial_height':'jumpaerial_height','air_accel':'air_accel','air_speed_max_x':'air_speed_max_x',
         'air_friction':'air_friction','gravity':'gravity','tvel_base':'tvel_base','weight':'weight',
-        'kneebend_ticks':'kneebend_anim_length','shield_size':'shield_size','shield_break_vel_y':'shield_break_vel_y'}
+        'kneebend_ticks':'kneebend_anim_length','shield_size':'shield_size','shield_break_vel_y':'shield_break_vel_y',
+        'jumps_max':'jumps_max'}
 
 def ours(name):
     body=re.search(r'fighter_attr_'+name+r'=\{(.*?)\};',(ROOT/'src/fighter_attr.c').read_text(),re.S)[1]
@@ -21,7 +22,7 @@ class AttributeTests(unittest.TestCase):
         path=ROOT/'upstream/ssb-decomp-re/src/relocData'
         if not path.exists():self.skipTest('reference checkout missing')
         from mario_moves import us_source
-        for name,file in (('mario','203_MarioMain.c'),('link','225_LinkMain.c')):
+        for name,file in (('mario','203_MarioMain.c'),('link','225_LinkMain.c'),('kirby','229_KirbyMain.c')):
             text=us_source((path/file).read_text())
             body=re.search(r'FTAttributes d\w+Main_attr = \{(.*?)\n\};',text,re.S)[1]
             ref={k:float(v.rstrip('f')) for v,k in re.findall(r'^\s*([-\d.]+)f?,\s*/\*\s*(\w+)\s*\*/',body,re.M)}

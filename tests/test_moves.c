@@ -43,7 +43,8 @@ int main(void)
     assert(seen2 && seen3);
     FILE *report=fopen("build/scene/moves.csv","w");assert(report);
     fputs("move,hits,peak_percent,captured,ko\n",report);
-    for(int m=0;m<MOVE_COUNT;++m) {
+    /* Slots from MOVE_UP_FALL on are Kirby statuses that Mario never starts. */
+    for(int m=0;m<MOVE_UP_FALL;++m) {
         combat_demo_begin(&s,(unsigned)m);assert(s.attack_frame==0);
         int captured=s.captured,visible=0;unsigned peak=s.percent;
         for(int t=0;t<240;++t) {

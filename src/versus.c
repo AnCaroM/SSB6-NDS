@@ -64,6 +64,7 @@ static void target_snapshot(Versus *v,unsigned i)
     /* Respawn immunity, or the intangible window of a roll/tech/stand-up. */
     s->target_immune=v->invulnerable[j]!=0 || combat_intangible(o);s->hitstop=0;
     s->target_shield=combat_shield_radius(o);
+    s->target_resist=combat_stone(o)?o->stone_resist:0;
     s->target_shield_x=o->fighter->shield_x*o->player.facing;s->target_shield_y=o->fighter->shield_y;
 }
 /* Sounds of a status that began this tick (script tick 0 + status SetStatus). */
@@ -88,7 +89,7 @@ void versus_step(Versus *v,const CombatInput input[2])
     if(v->winner>=0)return;
     ++v->tick;
     if(v->freeze) {--v->freeze;return;}
-    unsigned before_hits[2],before_respawn[2],before_shield[2],before_starts[2];int was_captured[2],falling[2];
+    unsigned before_hits[2],before_respawn[2],before_shield[2],before_starts[2],before_resisted[2];int was_captured[2],falling[2];
     int order=v->fighter[0].player.x<=v->fighter[1].player.x?1:-1;
     unsigned sides=v->solo?1:2;
     for(unsigned i=0;i<2;++i) {
@@ -96,6 +97,7 @@ void versus_step(Versus *v,const CombatInput input[2])
         before_respawn[i]=v->fighter[i].player.respawns;
         was_captured[i]=versus_captured(v,i);
         before_shield[i]=v->fighter[i].shield_hits;before_starts[i]=v->fighter[i].action_starts;
+        before_resisted[i]=v->fighter[i].resisted;
         /* Airborne damage (hitstun or tumble): landing techs or knocks down. */
         falling[i]=v->stun[i] || versus_damage_pose(v,i)==17;
         combat_note_shield(&v->fighter[i],input[i].shield); /* counted even while stunned (tech buffer) */
@@ -103,7 +105,21 @@ void versus_step(Versus *v,const CombatInput input[2])
     for(unsigned i=0;i<sides;++i) {
         CombatScene *s=&v->fighter[i];
         if(v->invulnerable[i])--v->invulnerable[i];
-        if(was_captured[i]) {++s->tick;s->attack_frame=-1;continue;}
+        if(was_captured[i]) {
+            ++s->tick;s->attack_frame=-1;
+            CombatScene *k=&v->fighter[1-i];
+            if(k->inhaled) {
+                /* ftCommonCaptureWaitKirby: each button tap or stick flip inside
+                 * Kirby shortens the breakout by 6 (1 + 5x the mash). */
+                const CombatInput *in=&input[i];int stick=in->motion.stick_x>20?1:in->motion.stick_x< -20?-1:0;
+                int mash=(in->attack && !s->attack_was_held) || (in->special && !s->special_was_held) ||
+                         (in->motion.jump_held && !s->player.jump_was_held) || (stick && stick!=s->last_stick);
+                s->attack_was_held=in->attack;s->special_was_held=in->special;s->player.jump_was_held=in->motion.jump_held;
+                s->last_stick=stick;
+                if(mash)k->inhale_breakout-=6;
+            }
+            continue;
+        }
         CombatInput in=input[i];
         if(v->stun[i]) {
             --v->stun[i];in=(CombatInput){0};s->attack_frame=-1;
@@ -203,11 +219,16 @@ void versus_step(Versus *v,const CombatInput input[2])
                 1.7f*s->damage_vx/s->damage_kb,1.7f*s->damage_vy/s->damage_kb};
             v->fighter[j].player=s->target;
             v->fighter[j].attack_frame=-1;v->fighter[j].dash_ticks=0;
-            v->fighter[j].captured=0;v->fighter[j].action=ACTION_NONE;
-            v->fighter[j].brake_ticks=0;
+            v->fighter[j].captured=0;v->fighter[j].inhaled=0;v->fighter[j].action=ACTION_NONE;
+            v->fighter[j].brake_ticks=0;v->fighter[j].stone=0;v->fighter[j].stone_resist=0;
             if(s->damage_sound!=SOUND_NONE)sound_event(v,s->damage_sound,j);
             /* ftCommonDamage compares hitstun with DAMAGEVOICE_MIN (80). */
             if(s->hitstun>=80)sound_event(v,(FightSound)v->fighter[j].fighter->sounds.damage,j);
+            if(s->hitstop>v->freeze)v->freeze=s->hitstop;
+        } else if(s->resisted!=before_resisted[i]) {
+            /* Kirby's stone absorbed the hit: hitlag and sound only. */
+            v->fighter[j].stone_resist=s->target_resist;
+            if(s->damage_sound!=SOUND_NONE)sound_event(v,s->damage_sound,j);
             if(s->hitstop>v->freeze)v->freeze=s->hitstop;
         } else if(s->shield_hits!=before_shield[i]) {
             /* Blocked: hitlag for both, shield stun/push-back or a break. */
@@ -235,6 +256,7 @@ CombatInput versus_cpu(const Versus *v,unsigned who)
     int pulse=v->tick%6==0;
     /* Tech: tap the shield just before landing from a launch (not always). */
     if(v->stun[who] && p->state==SCENE_AIR && p->vy<0 && p->y<320 && p->y>-50 && beat%3)in.shield=pulse;
+    if(versus_captured(v,who) && o->inhaled) {in.attack=pulse;return in;} /* mash out of Kirby */
     if(v->winner>=0 || v->freeze || v->stun[who] || versus_captured(v,who))return in;
     if(s->action) {
         switch(s->action) {
@@ -258,8 +280,8 @@ CombatInput versus_cpu(const Versus *v,unsigned who)
     if(p->state==SCENE_CLIFF) {in.motion.stick_x=p->state_ticks<12?0:-p->cliff_side*80;return in;}
     if((p->x>2050 || p->x< -2050) && p->y<150) {
         in.motion.stick_x=p->x>0?-80:80;
-        if(p->vy<0 && p->y<0 && p->jumps_used<2)in.motion.jump_held=pulse;
-        else if(p->y< -450 && !p->special_used && p->jumps_used>=2) {
+        if(p->vy<0 && p->y<0 && p->jumps_used<p->attr->jumps_max)in.motion.jump_held=pulse;
+        else if(p->y< -450 && !p->special_used && p->jumps_used>=p->attr->jumps_max) {
             in.up=1;in.special=pulse;
         }
         return in;
@@ -269,7 +291,9 @@ CombatInput versus_cpu(const Versus *v,unsigned who)
         if(s->move==MOVE_JAB1 || s->move==MOVE_JAB2)in.attack=pulse;
         return in;
     }
-    if(grounded(p) && p->facing!=dir) {in.motion.stick_x=dir*80;return in;}
+    /* Turn toward the opponent, unless almost straight above/below: walking
+     * past each other every tick would otherwise flip both forever. */
+    if(grounded(p) && p->facing!=dir && (dist>120 || (dy<200 && dy> -200))) {in.motion.stick_x=dir*80;return in;}
     /* Block an incoming attack most of the time (the shield decays, so not always). */
     if(grounded(p) && o->attack_frame>=0 && dist<450 && dy<200 && dy> -200 && beat%3!=0 && s->shield_health>10) {
         in.shield=1;return in;

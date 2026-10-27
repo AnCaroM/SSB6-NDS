@@ -24,7 +24,8 @@ int main(void)
     assert(m.screen==MENU_FIGHTERS && m.pick[0]==0 && m.pick[1]==1);
     menu_step(&m,MENU_KEY_RIGHT,-1);assert(m.pick[0]==1);
     menu_step(&m,MENU_KEY_DOWN,-1);menu_step(&m,MENU_KEY_LEFT,-1);assert(m.side==1 && m.pick[1]==0);
-    menu_step(&m,0,MENU_PICK_ROW+MENU_PICK_SPACING);assert(m.pick[1]==1);
+    menu_step(&m,MENU_KEY_LEFT,-1);assert(m.pick[1]==MENU_FIGHTER_COUNT-1); /* wraps to Kirby */
+    menu_step(&m,0,MENU_PICK_ROW+MENU_PICK_SPACING);assert(m.pick[1]==0);
     assert(menu_step(&m,MENU_KEY_B,-1)==MENU_STAY && m.screen==MENU_SELECT);
     /* Third option: explore the stage with one chosen fighter (single row). */
     menu_init(&m);menu_step(&m,MENU_KEY_START,-1);menu_step(&m,MENU_KEY_DOWN,-1);menu_step(&m,MENU_KEY_DOWN,-1);
