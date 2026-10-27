@@ -9,7 +9,7 @@ FIELDS={'walk_speed_mul':'walk_speed_mul','traction':'traction','run_speed':'run
         'jump_height_mul':'jump_height_mul','jump_height_base':'jump_height_base','jumpaerial_vel_x':'jumpaerial_vel_x',
         'jumpaerial_height':'jumpaerial_height','air_accel':'air_accel','air_speed_max_x':'air_speed_max_x',
         'air_friction':'air_friction','gravity':'gravity','tvel_base':'tvel_base','weight':'weight',
-        'kneebend_ticks':'kneebend_anim_length'}
+        'kneebend_ticks':'kneebend_anim_length','shield_size':'shield_size','shield_break_vel_y':'shield_break_vel_y'}
 
 def ours(name):
     body=re.search(r'fighter_attr_'+name+r'=\{(.*?)\};',(ROOT/'src/fighter_attr.c').read_text(),re.S)[1]

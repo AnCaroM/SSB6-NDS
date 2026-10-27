@@ -5,6 +5,9 @@
 
 static int grounded(const MotionScene *p)
 {return p->state==SCENE_WAIT || p->state==SCENE_WALK || p->state==SCENE_SQUAT;}
+/* Rolls and tech rolls ignore the body push (is_jostle_ignore). */
+static int rolling(const CombatScene *s)
+{return s->action && s->fighter->actions && s->fighter->actions[s->action].dx;}
 static void sound_event(Versus *v,FightSound sound,unsigned fighter)
 {if(v->sound_count<8)v->sounds[v->sound_count++]=(FightSoundEvent){sound,fighter};}
 /* Sounds authored on the current tick of the move's original motion script. */
@@ -49,10 +52,29 @@ int versus_damage_pose(const Versus *v,unsigned i)
 }
 static void target_snapshot(Versus *v,unsigned i)
 {
-    CombatScene *s=&v->fighter[i];unsigned j=1-i;
-    s->target=v->fighter[j].player;s->percent=v->percent[j];
+    CombatScene *s=&v->fighter[i];unsigned j=1-i;const CombatScene *o=&v->fighter[j];
+    s->target=o->player;s->percent=v->percent[j];s->own_percent=v->percent[i];
     s->hitstun=v->stun[j];s->damage_vx=v->launch[j];
-    s->target_immune=v->invulnerable[j]!=0;s->hitstop=0;
+    /* Respawn immunity, or the intangible window of a roll/tech/stand-up. */
+    s->target_immune=v->invulnerable[j]!=0 || combat_intangible(o);s->hitstop=0;
+    s->target_shield=combat_shield_radius(o);
+    s->target_shield_x=o->fighter->shield_x*o->player.facing;s->target_shield_y=o->fighter->shield_y;
+}
+/* Sounds of a status that began this tick (script tick 0 + status SetStatus). */
+static void action_sounds(Versus *v,unsigned i)
+{
+    const CombatScene *s=&v->fighter[i];
+    if(!s->action || !s->fighter->actions)return;
+    const FighterAction *a=&s->fighter->actions[s->action];
+    for(unsigned k=0;k<2;++k)if(a->sound[k]<SOUND_COUNT)sound_event(v,(FightSound)a->sound[k],i);
+    switch(s->action) {
+    case ACTION_GUARD_ON:sound_event(v,SOUND_GUARD_ON,i);break;
+    case ACTION_GUARD_OFF:sound_event(v,SOUND_GUARD_OFF,i);break;
+    case ACTION_SHIELD_BREAK_FLY:sound_event(v,SOUND_SHIELD_BREAK,i);break;
+    case ACTION_DOWN_BOUNCE_D:case ACTION_DOWN_BOUNCE_U:case ACTION_SHIELD_BREAK_DOWN_D:case ACTION_SHIELD_BREAK_DOWN_U:
+        sound_event(v,(FightSound)s->fighter->sounds.down_bounce,i);break;
+    default:break;
+    }
 }
 void versus_step(Versus *v,const CombatInput input[2])
 {
@@ -60,12 +82,16 @@ void versus_step(Versus *v,const CombatInput input[2])
     if(v->winner>=0)return;
     ++v->tick;
     if(v->freeze) {--v->freeze;return;}
-    unsigned before_hits[2],before_respawn[2];int was_captured[2];
+    unsigned before_hits[2],before_respawn[2],before_shield[2],before_starts[2];int was_captured[2],falling[2];
     int order=v->fighter[0].player.x<=v->fighter[1].player.x?1:-1;
     for(unsigned i=0;i<2;++i) {
         target_snapshot(v,i);before_hits[i]=v->fighter[i].hits;
         before_respawn[i]=v->fighter[i].player.respawns;
         was_captured[i]=versus_captured(v,i);
+        before_shield[i]=v->fighter[i].shield_hits;before_starts[i]=v->fighter[i].action_starts;
+        /* Airborne damage (hitstun or tumble): landing techs or knocks down. */
+        falling[i]=v->stun[i] || versus_damage_pose(v,i)==17;
+        combat_note_shield(&v->fighter[i],input[i].shield); /* counted even while stunned (tech buffer) */
     }
     for(unsigned i=0;i<2;++i) {
         CombatScene *s=&v->fighter[i];
@@ -103,8 +129,16 @@ void versus_step(Versus *v,const CombatInput input[2])
         if(s->player.landings!=lands) {
             sound_event(v,(FightSound)s->fighter->sounds.land,i);
             /* Actual landing animation replaces airborne damage. */
+            int tumble=versus_damage_pose(v,i)==17;
             v->reaction[i].active=0;
-            if(v->stun[i])v->stun[i]=6;
+            if(falling[i] && s->fighter->actions) {
+                /* ftCommonDamageAirCommonProcMap / DamageFallProcMap: Z within
+                 * 20 ticks techs (sideways with the stick), else DownBounce. */
+                int x=input[i].motion.stick_x;unsigned a;
+                if(s->shield_age<20)a=x>=20 || x<=-20?(x*s->player.facing>=0?ACTION_PASSIVE_F:ACTION_PASSIVE_B):ACTION_PASSIVE;
+                else a=tumble?ACTION_DOWN_BOUNCE_D:ACTION_DOWN_BOUNCE_U;
+                v->stun[i]=0;combat_action_start(s,a);
+            } else if(v->stun[i])v->stun[i]=6;
         }
         /* Mario motion scripts Jump/JumpAerial play these voices. */
         if(s->player.air_jumps!=jumps)sound_event(v,(FightSound)s->fighter->sounds.jump_air,i);
@@ -129,6 +163,7 @@ void versus_step(Versus *v,const CombatInput input[2])
     if(respawned)return;
     MotionScene *a=&v->fighter[0].player,*b=&v->fighter[1].player;
     if(!v->fighter[0].captured && !v->fighter[1].captured && grounded(a) && grounded(b) &&
+       !rolling(&v->fighter[0]) && !rolling(&v->fighter[1]) &&
        a->y-b->y<200 && b->y-a->y<200 && (b->x-a->x)*order<220) {
         /* Reduced grounded body push prevents the CPU from walking through
          * its opponent and turning back and forth forever at close range. */
@@ -159,31 +194,57 @@ void versus_step(Versus *v,const CombatInput input[2])
                 1.7f*s->damage_vx/s->damage_kb,1.7f*s->damage_vy/s->damage_kb};
             v->fighter[j].player=s->target;
             v->fighter[j].attack_frame=-1;v->fighter[j].dash_ticks=0;
-            v->fighter[j].captured=0;
+            v->fighter[j].captured=0;v->fighter[j].action=ACTION_NONE;
             v->fighter[j].brake_ticks=0;
             if(s->damage_sound!=SOUND_NONE)sound_event(v,s->damage_sound,j);
             /* ftCommonDamage compares hitstun with DAMAGEVOICE_MIN (80). */
             if(s->hitstun>=80)sound_event(v,(FightSound)v->fighter[j].fighter->sounds.damage,j);
             if(s->hitstop>v->freeze)v->freeze=s->hitstop;
+        } else if(s->shield_hits!=before_shield[i]) {
+            /* Blocked: hitlag for both, shield stun/push-back or a break. */
+            combat_shield_hit(&v->fighter[j],s->shield_hit_damage,s->shield_hit_dir);
+            if(s->shield_hit_sound<SOUND_COUNT)sound_event(v,(FightSound)s->shield_hit_sound,j);
+            if(s->hitstop>v->freeze)v->freeze=s->hitstop;
         } else if(s->captured) {
             v->fighter[j].player=s->target;
-            v->fighter[j].attack_frame=-1;
+            v->fighter[j].attack_frame=-1;v->fighter[j].action=ACTION_NONE;
             v->stun[j]=0;v->launch[j]=v->launch_y[j]=0;
             v->reaction[j].active=0;
             v->fighter[j].player.hit_vx=v->fighter[j].player.hit_vy=0;
         }
     }
+    for(unsigned i=0;i<2;++i)if(v->fighter[i].action_starts!=before_starts[i])action_sounds(v,i);
 }
 CombatInput versus_cpu(const Versus *v,unsigned who)
 {
-    CombatInput in={0};const CombatScene *s=&v->fighter[who];
-    const MotionScene *p=&s->player,*other=&v->fighter[1-who].player;
-    if(v->winner>=0 || v->freeze || v->stun[who] || versus_captured(v,who))return in;
+    CombatInput in={0};const CombatScene *s=&v->fighter[who],*o=&v->fighter[1-who];
+    const MotionScene *p=&s->player,*other=&o->player;
     float dx=other->x-p->x,dy=other->y-p->y,dist=dx<0?-dx:dx;
     int dir=dx<0?-1:1;
     /* Bounded decision pulses: no allocations, path search or RNG. */
     unsigned beat=(v->tick/6+who*3)%16;
     int pulse=v->tick%6==0;
+    /* Tech: tap the shield just before landing from a launch (not always). */
+    if(v->stun[who] && p->state==SCENE_AIR && p->vy<0 && p->y<320 && p->y>-50 && beat%3)in.shield=pulse;
+    if(v->winner>=0 || v->freeze || v->stun[who] || versus_captured(v,who))return in;
+    if(s->action) {
+        switch(s->action) {
+        case ACTION_DOWN_BOUNCE_D:case ACTION_DOWN_BOUNCE_U:
+            if(pulse && dist<350)in.attack=1; /* buffered get-up attack */
+            break;
+        case ACTION_DOWN_WAIT_D:case ACTION_DOWN_WAIT_U:
+            if(pulse) {if(dist<350)in.motion.stick_x=-dir*80;else in.shield=1;}
+            break;
+        case ACTION_GUARD_ON:case ACTION_GUARD:
+            /* Hold while the opponent attacks; roll away when crowded. */
+            in.shield=o->attack_frame>=0 || beat%4!=0;
+            if(pulse && dist<220 && beat==5)in.motion.stick_x=-dir*80;
+            break;
+        case ACTION_FURAFURA:in.attack=pulse;break;
+        default:break;
+        }
+        return in;
+    }
     if(p->state==SCENE_CLIFF) {in.motion.stick_x=-p->cliff_side*80;return in;}
     if((p->x>2050 || p->x< -2050) && p->y<150) {
         in.motion.stick_x=p->x>0?-80:80;
@@ -199,6 +260,10 @@ CombatInput versus_cpu(const Versus *v,unsigned who)
         return in;
     }
     if(grounded(p) && p->facing!=dir) {in.motion.stick_x=dir*80;return in;}
+    /* Block an incoming attack most of the time (the shield decays, so not always). */
+    if(grounded(p) && o->attack_frame>=0 && dist<450 && dy<200 && dy> -200 && beat%3!=0 && s->shield_health>10) {
+        in.shield=1;return in;
+    }
     if(dist>260)in.motion.stick_x=dir*80;
     if(dy>350 && grounded(p))in.motion.jump_held=pulse;
     if(dy< -450 && p->platform>0)in.drop=pulse;

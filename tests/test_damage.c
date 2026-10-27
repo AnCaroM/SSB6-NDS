@@ -61,13 +61,16 @@ int main(void)
     assert(v.fighter[1].player.y-y>44); /* Terminal fall speed cannot clip a launch. */
     assert(v.launch_y[1]<launch && v.launch_y[1]>0);
     assert(v.fighter[1].attack_frame<0 && v.reaction[1].age==age+1);
-    /* Solid landing cancels vertical impulse and starts bounded recovery. */
+    /* Landing while launched cancels the vertical impulse and, without a
+     * tech, knocks the fighter down (DownBounce; Prueba19). */
     v.fighter[1].player.y=10;v.fighter[1].player.x=0;
     v.fighter[1].player.vy=-20;v.launch_y[1]=-40;
     v.reaction[1].decay_y=-1.7f;
     versus_step(&v,input);
-    assert(v.fighter[1].player.state==SCENE_LAND && !v.launch_y[1]);
-    assert(v.stun[1]==6 && !v.reaction[1].active && versus_damage_pose(&v,1)==-1);
+    assert(v.fighter[1].player.state==SCENE_WAIT && !v.launch_y[1]);
+    assert(v.fighter[1].action==ACTION_DOWN_BOUNCE_U && !v.stun[1]);
+    assert(!v.reaction[1].active && versus_damage_pose(&v,1)==-1);
+    v.fighter[1].action=ACTION_NONE;
     /* After vector exhaustion there is no sign reversal / phantom impulse. */
     v.fighter[1].player.y=2000;v.fighter[1].player.state=SCENE_AIR;
     v.launch[1]=.5f;v.launch_y[1]=0;v.reaction[1].decay_x=1.7f;

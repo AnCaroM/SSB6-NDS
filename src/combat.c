@@ -15,6 +15,197 @@ static int up_special(MarioMove m) {return m==MOVE_UP || m==MOVE_UP_AIR;}
 static const MoveFrame *at(const CombatScene *s,MarioMove m,unsigned t)
 {const MoveDesc *d=&s->fighter->moves[m];if(t>=d->ticks)t=d->ticks-1;return &s->fighter->frames[d->first+t];}
 
+/* ---- Shield, rolls, techs and knockdowns (ftcommon.h constants) ---- */
+#define SHIELD_HEALTH_MAX 55      /* ftmanager.c spawn value */
+#define SHIELD_HEALTH_BROKEN 30
+#define SHIELD_HEAL_WAIT 10       /* ftMainProcParams: +1 every 10 ticks while down */
+#define SHIELD_DECAY_WAIT 16      /* FTCOMMON_GUARD_DECAY_INT */
+#define SHIELD_SETOFF_MUL 1.62f   /* FTCOMMON_GUARD_SETOFF_MUL (US) */
+#define SHIELD_SETOFF_ADD 4
+#define SHIELD_SETOFF_VEL 2       /* FTCOMMON_GUARD_VEL_MUL */
+#define ESCAPE_STICK_MIN 56       /* FTCOMMON_ESCAPE_STICK_RANGE_MIN */
+#define ESCAPE_BUFFER 4
+#define PASSIVE_BUFFER 20         /* FTCOMMON_PASSIVE_BUFFER_TICS_MAX */
+#define DOWN_STAND_WAIT 180
+#define DOWN_ATTACK_BUFFER 60
+#define DOWN_STICK_MIN 20
+#define FURAFURA_WAIT 400
+#define FURAFURA_MIN 90           /* US */
+static int has_actions(const CombatScene *s) {return s->fighter->actions!=NULL;}
+static const FighterAction *act(const CombatScene *s) {return &s->fighter->actions[s->action];}
+static int shielding(const CombatScene *s)
+{return (s->action==ACTION_GUARD_ON || s->action==ACTION_GUARD) && s->shield_health>0;}
+static int down_face(unsigned a) /* 1 = the face-down (D) variant of a knockdown status */
+{return a==ACTION_DOWN_BOUNCE_D || a==ACTION_DOWN_WAIT_D || a==ACTION_SHIELD_BREAK_DOWN_D;}
+static void landed(CombatScene *s)
+{s->player.state=SCENE_WAIT;s->player.state_ticks=0;s->player.vy=0;s->player.hit_vy=0;}
+static void action_set(CombatScene *s,unsigned a)
+{s->action=a;s->action_tick=0;++s->action_starts;s->action_facing=s->player.facing;}
+static void shield_break(CombatScene *s)
+{
+    /* ftCommonShieldBreakFlySetStatus: straight up at attr shield_break_vel_y. */
+    s->shield_health=SHIELD_HEALTH_BROKEN;action_set(s,ACTION_SHIELD_BREAK_FLY);
+    s->player.state=SCENE_AIR;s->player.platform=-1;s->player.vx=0;
+    s->player.vy=s->fighter->attr->shield_break_vel_y;s->player.hit_vx=s->player.hit_vy=0;
+    s->player.jumps_used=1;s->player.air_jump=0;
+}
+void combat_action_start(CombatScene *s,unsigned a)
+{
+    if(!has_actions(s) || a>=ACTION_COUNT)return;
+    action_set(s,a);s->attack_frame=-1;s->dash_ticks=0;s->run_age=0;s->brake_ticks=0;s->item_throw=0;
+    switch(a) {
+    case ACTION_GUARD_ON:s->shield_decay_wait=SHIELD_DECAY_WAIT;s->setoff_ticks=0;s->shield_release=0;break;
+    case ACTION_DOWN_WAIT_D:case ACTION_DOWN_WAIT_U:s->down_wait=DOWN_STAND_WAIT;landed(s);break;
+    case ACTION_DOWN_BOUNCE_D:case ACTION_DOWN_BOUNCE_U:s->down_attack_buffer=0;landed(s);break;
+    case ACTION_SHIELD_BREAK_FLY:shield_break(s);break;
+    case ACTION_FURAFURA:
+        /* ftCommonFuraFuraSetStatus: 400 - percent (floor 0) + 90, shield 30. */
+        s->breakout_wait=(s->own_percent<FURAFURA_WAIT?FURAFURA_WAIT-s->own_percent:0)+FURAFURA_MIN;
+        s->shield_health=SHIELD_HEALTH_BROKEN;break;
+    case ACTION_PASSIVE:case ACTION_PASSIVE_F:case ACTION_PASSIVE_B:
+    case ACTION_SHIELD_BREAK_DOWN_D:case ACTION_SHIELD_BREAK_DOWN_U:landed(s);break;
+    default:break;
+    }
+}
+void combat_note_shield(CombatScene *s,int held)
+{
+    int pressed=held && !s->shield_was_held;s->shield_was_held=held;
+    if(pressed)s->shield_age=0;else if(s->shield_age<100)++s->shield_age;
+}
+unsigned combat_action_clip(const CombatScene *s,unsigned *age)
+{
+    if(!s->action || !has_actions(s)) {*age=0;return 0;}
+    *age=s->action_tick;return act(s)->clip; /* the renderer clamps or loops */
+}
+float combat_shield_radius(const CombatScene *s)
+{
+    /* ftCommonGuardUpdateShieldCollision: 30 x ((.65 health/55 + .35) size/30). */
+    if(!has_actions(s) || !shielding(s))return 0;
+    return (.65f*s->shield_health/SHIELD_HEALTH_MAX+.35f)*s->fighter->attr->shield_size;
+}
+int combat_intangible(const CombatScene *s)
+{
+    if(!s->action || !has_actions(s))return 0;
+    const FighterAction *a=act(s);
+    return s->action_tick>=a->intangible_from && s->action_tick<a->intangible_to;
+}
+void combat_shield_hit(CombatScene *s,unsigned damage,int dir)
+{
+    if(!has_actions(s))return;
+    s->shield_health-=(int)damage;
+    if(s->shield_health<=0) {shield_break(s);return;}
+    /* ftCommonGuardSetOffSetStatus: stun ticks and push-back away from the attacker. */
+    s->setoff_ticks=(unsigned)(damage*SHIELD_SETOFF_MUL+SHIELD_SETOFF_ADD);
+    s->player.vx=dir*(float)s->setoff_ticks*SHIELD_SETOFF_VEL;
+    if(s->action==ACTION_GUARD_ON) {s->action=ACTION_GUARD;s->action_tick=act(s)->ticks;}
+}
+static int getup_attack(CombatScene *s)
+{
+    unsigned a=s->action;s->action=ACTION_NONE;
+    return combat_start_move(s,down_face(a)?MOVE_GETUP_D:MOVE_GETUP_U);
+}
+/* One tick of the current action: transitions, timers and TransN movement.
+ * Inputs: this tick's edges. Returns after the action's own tick advance. */
+static void action_update(CombatScene *s,CombatInput in,int pressed,int special,int grab,int shield_pressed)
+{
+    const FighterAction *a=act(s);unsigned t=s->action_tick,starts=s->action_starts;
+    int x=in.motion.stick_x,fwd=x*s->player.facing>=0?1:-1;
+    int roll=(x>=ESCAPE_STICK_MIN || x<=-ESCAPE_STICK_MIN) && s->tap_age<ESCAPE_BUFFER?fwd:0;
+    int down_roll=(x>=DOWN_STICK_MIN || x<=-DOWN_STICK_MIN)?fwd:0;
+    int jump=in.motion.jump_held && !s->player.jump_was_held;
+    int d=down_face(s->action),ended=t+1>=a->ticks;
+    if(a->dx && t<a->ticks) {
+        /* ftPhysicsApplyGroundVelTransN: the animation's TransN delta along the
+         * facing the status began with (after flag1 flips lr mid-roll the
+         * source negates the velocity again, so the direction never changes);
+         * rolls stay on their platform. */
+        s->player.x+=a->dx[t]*s->action_facing;s->player.vx=0;
+        unsigned n;const StagePlatform *p=stage_platforms(s->player.stage,&n);
+        if(s->player.platform>=0 && (unsigned)s->player.platform<n) {
+            const StagePlatform *q=&p[s->player.platform];
+            if(s->player.x<q->left)s->player.x=q->left;
+            if(s->player.x>q->right)s->player.x=q->right;
+        }
+    }
+    switch(s->action) {
+    case ACTION_GUARD_ON:case ACTION_GUARD:
+        if(!in.shield)s->shield_release=1;
+        if(!s->setoff_ticks) {
+            /* GuardKneeBend / Escape / Catch / GuardPass interrupts. */
+            if(jump) {s->action=ACTION_NONE;break;}
+            if(roll) {action_set(s,roll>0?ACTION_ESCAPE_F:ACTION_ESCAPE_B);break;}
+            if(grab) {s->action=ACTION_NONE;combat_start_move(s,MOVE_GRAB);break;}
+            if(in.drop && s->player.platform>0) {s->action=ACTION_NONE;scene_drop_through(&s->player);break;}
+        }
+        /* ftCommonGuardUpdateShieldVars: one point every 16 ticks; empty breaks. */
+        if(s->shield_health>0 && --s->shield_decay_wait==0) {
+            s->shield_decay_wait=SHIELD_DECAY_WAIT;
+            if(--s->shield_health==0) {shield_break(s);break;}
+        }
+        if(s->setoff_ticks) {
+            if(--s->setoff_ticks==0 && s->shield_release)action_set(s,ACTION_GUARD_OFF);
+        } else if(s->action==ACTION_GUARD_ON) {
+            if(ended)action_set(s,s->shield_release?ACTION_GUARD_OFF:ACTION_GUARD);
+        } else if(s->shield_release)action_set(s,ACTION_GUARD_OFF);
+        break;
+    case ACTION_GUARD_OFF:
+        if(ended)s->action=ACTION_NONE;
+        break;
+    case ACTION_DOWN_BOUNCE_D:case ACTION_DOWN_BOUNCE_U:
+        if(pressed || special)s->down_attack_buffer=DOWN_ATTACK_BUFFER;
+        else if(s->down_attack_buffer)--s->down_attack_buffer;
+        if(ended) {
+            if(s->down_attack_buffer)getup_attack(s);
+            else if(down_roll)action_set(s,down_roll>0?(d?ACTION_DOWN_FORWARD_D:ACTION_DOWN_FORWARD_U):(d?ACTION_DOWN_BACK_D:ACTION_DOWN_BACK_U));
+            else combat_action_start(s,d?ACTION_DOWN_WAIT_D:ACTION_DOWN_WAIT_U);
+        }
+        break;
+    case ACTION_DOWN_WAIT_D:case ACTION_DOWN_WAIT_U:
+        if(pressed || special)getup_attack(s);
+        else if(down_roll)action_set(s,down_roll>0?(d?ACTION_DOWN_FORWARD_D:ACTION_DOWN_FORWARD_U):(d?ACTION_DOWN_BACK_D:ACTION_DOWN_BACK_U));
+        else if(in.up || shield_pressed || --s->down_wait==0)action_set(s,d?ACTION_DOWN_STAND_D:ACTION_DOWN_STAND_U);
+        break;
+    case ACTION_SHIELD_BREAK_FLY:
+        if(ended)action_set(s,ACTION_SHIELD_BREAK_FALL);
+        break;
+    case ACTION_SHIELD_BREAK_FALL:
+        break; /* lands into ShieldBreakDown (combat_update) */
+    case ACTION_SHIELD_BREAK_DOWN_D:case ACTION_SHIELD_BREAK_DOWN_U:
+        if(ended)action_set(s,d?ACTION_SHIELD_BREAK_STAND_D:ACTION_SHIELD_BREAK_STAND_U);
+        break;
+    case ACTION_SHIELD_BREAK_STAND_D:case ACTION_SHIELD_BREAK_STAND_U:
+        if(ended)combat_action_start(s,ACTION_FURAFURA);
+        break;
+    case ACTION_FURAFURA: {
+        /* ftCommonCaptureTrappedUpdateBreakoutVars x4: button taps and stick
+         * flips shorten the dizzy time; the shield stays at 30. */
+        int stick=x>DOWN_STICK_MIN?1:x< -DOWN_STICK_MIN?-1:0;
+        int mash=pressed || special || shield_pressed || jump || (stick && stick!=s->mash_stick);
+        s->mash_stick=stick;s->shield_health=SHIELD_HEALTH_BROKEN;
+        if(s->breakout_wait)--s->breakout_wait;
+        if(mash)s->breakout_wait=s->breakout_wait>4?s->breakout_wait-4:0;
+        if(!s->breakout_wait)s->action=ACTION_NONE;
+        break;
+    }
+    case ACTION_DOWN_STAND_D:case ACTION_DOWN_STAND_U:
+        if(ended || (jump && t>=a->turn_tick))s->action=ACTION_NONE;
+        break;
+    case ACTION_ESCAPE_F:case ACTION_ESCAPE_B:
+        /* flag1 (RollF tick 20) flips lr; the model's yaw follows at the next
+         * status, when the animation has turned the body, so the drawn facing
+         * flips here at the end: a forward roll ends facing the other way. */
+        if(ended) {
+            if(a->turn_tick!=255)s->player.facing=-s->player.facing;
+            s->action=ACTION_NONE;
+        }
+        break;
+    default: /* techs and down rolls end into Wait */
+        if(ended)s->action=ACTION_NONE;
+        break;
+    }
+    if(s->action && s->action_starts==starts)++s->action_tick;
+}
+
 /* ftParamGetCommonKnockback with the defender's FTAttributes weight. */
 float combat_knockback_weight(unsigned p,const MoveHit *h,float weight)
 {
@@ -30,6 +221,7 @@ void combat_init_stage(CombatScene *s,StageId stage)
     s->player.x=-200;s->target.x=180;s->facing=s->attack_facing=1;s->target.facing=-1;
     s->attack_frame=-1;s->tornado_charge=1;s->tap_age=100;
     s->fighter=&fighter_mario;
+    s->shield_health=SHIELD_HEALTH_MAX;s->shield_heal_wait=SHIELD_HEAL_WAIT;s->shield_age=100;
 }
 void combat_set_fighter(CombatScene *s,const Fighter *f)
 {s->fighter=f;s->player.attr=f->attr;s->player.kind=(uint8_t)f->kind;}
@@ -71,6 +263,19 @@ static int overlap(const MotionScene *p,float x,float y,float radius)
 {
     float yy=y;if(yy<p->y+80)yy=p->y+80;if(yy>p->y+330)yy=p->y+330;
     float dx=p->x-x,dy=yy-y,r=radius+70;return dx*dx+dy*dy<=r*r;
+}
+/* gmCollisionCheckFighterAttackShieldCollide: hit sphere against the shield
+ * sphere at the target's YRotN. Checked before the hurt capsule. */
+static int shield_blocks(const CombatScene *s,float x,float y,float radius)
+{
+    if(s->target_shield<=0)return 0;
+    float dx=s->target.x+s->target_shield_x-x,dy=s->target.y+s->target_shield_y-y,r=radius+s->target_shield;
+    return dx*dx+dy*dy<=r*r;
+}
+static void shield_hit(CombatScene *s,unsigned damage,int dir,unsigned sound)
+{
+    ++s->shield_hits;s->shield_hit_damage=damage;s->shield_hit_dir=dir;s->shield_hit_sound=sound;
+    s->attack_connected=1;s->hitstop=damage/3+5;
 }
 static void damage(CombatScene *s,const MoveHit *h,int dir,float impact_y)
 {
@@ -131,7 +336,9 @@ static void projectiles(CombatScene *s)
             if(b->vx*b->vx+b->vy*b->vy<900)b->life=0;
             break;
         }
-        if(b->life && !s->captured && !s->target_immune && overlap(&s->target,b->x,b->y,100)) {
+        if(b->life && !s->captured && !s->target_immune && shield_blocks(s,b->x,b->y,100)) {
+            shield_hit(s,7,b->facing,SOUND_BURN_S);b->life=0;
+        } else if(b->life && !s->captured && !s->target_immune && overlap(&s->target,b->x,b->y,100)) {
             /* US MarioSpecial1 fireball attributes: sfx 28 = BurnS. */
             MoveHit h={0};h.damage=7;h.angle=361;h.scale=25;h.base=10;h.sound=SOUND_BURN_S;
             damage(s,&h,b->facing,b->y);b->life=0;
@@ -178,7 +385,10 @@ static void boomerang_update(CombatScene *s)
     b->x+=b->dx*b->speed;b->y+=b->dy*b->speed;
     float cx=s->player.x-b->x,cy=s->player.y+BOOMERANG_Y-b->y;
     if(b->returning && cx*cx+cy*cy<180*180) {b->active=0;b->caught=1;return;}
-    if(!b->hit && !s->captured && !s->target_immune && overlap(&s->target,b->x,b->y,100)) {
+    if(!b->hit && !s->captured && !s->target_immune && shield_blocks(s,b->x,b->y,100)) {
+        shield_hit(s,b->returning?8:9,b->dx>=0?1:-1,SOUND_KICK_L);b->hit=1;
+        if(!b->returning) {b->speed-=5;boomerang_return(b,1.5f);}
+    } else if(!b->hit && !s->captured && !s->target_immune && overlap(&s->target,b->x,b->y,100)) {
         MoveHit h={0};h.damage=b->returning?8:9;h.angle=70;h.scale=30;h.base=55;h.sound=SOUND_KICK_L;
         h.cos_angle=1401;h.sin_angle=3849;
         damage(s,&h,b->dx>=0?1:-1,b->y);b->hit=1;
@@ -193,7 +403,9 @@ static void bomb_update(CombatScene *s)
     if(m->state==BOMB_EXPLODING) {
         /* Radius 300/230/150 over ticks 0-5, then gone. */
         float radius=m->age<2?300:m->age<4?230:150;
-        if(!m->hit && !s->captured && !s->target_immune && overlap(&s->target,m->x,m->y,radius)) {
+        if(!m->hit && !s->captured && !s->target_immune && shield_blocks(s,m->x,m->y,radius)) {
+            shield_hit(s,5,s->target.x>=m->x?1:-1,SOUND_EXPLODE_L);m->hit=1;
+        } else if(!m->hit && !s->captured && !s->target_immune && overlap(&s->target,m->x,m->y,radius)) {
             MoveHit h={0};h.damage=5;h.angle=361;h.scale=20;h.base=60;h.sound=SOUND_EXPLODE_L;
             damage(s,&h,s->target.x>=m->x?1:-1,m->y);m->hit=1;
         }
@@ -221,12 +433,14 @@ static void bomb_update(CombatScene *s)
         break;
     }
     if(m->y<stage_blast_bottom(s->player.stage)) {m->state=BOMB_NONE;return;}
-    if(!s->captured && !s->target_immune && overlap(&s->target,m->x,m->y,110)) {
+    if(!s->captured && !s->target_immune && (shield_blocks(s,m->x,m->y,110) || overlap(&s->target,m->x,m->y,110))) {
         if(fast) {bomb_explode(m);return;}
         float speed=sqrtf(m->vx*m->vx+m->vy*m->vy);
         MoveHit h={0};h.damage=(int16_t)(2+(unsigned)(speed*.1f+.999f));h.angle=80;h.scale=20;h.base=60;h.sound=SOUND_KICK_M;
         h.cos_angle=711;h.sin_angle=4034;
-        int dir=s->target.x>=m->x?1:-1;damage(s,&h,dir,m->y);
+        int dir=s->target.x>=m->x?1:-1;
+        if(shield_blocks(s,m->x,m->y,110))shield_hit(s,(unsigned)h.damage,dir,SOUND_KICK_M);
+        else damage(s,&h,dir,m->y);
         m->vx=-8.0f*dir;m->vy=20;
     }
 }
@@ -277,23 +491,29 @@ void combat_update(CombatScene *s,CombatInput in)
     int pressed=in.attack && !s->attack_was_held;
     int special=in.special && !s->special_was_held,grab=in.grab && !s->grab_was_held;
     s->attack_was_held=!!in.attack;s->special_was_held=!!in.special;s->grab_was_held=!!in.grab;
+    if(!s->duel_mode)combat_note_shield(s,in.shield);
+    int shield_pressed=s->shield_age==0,actions=has_actions(s);
     if(pressed && s->attack_frame>=0 && (s->move==MOVE_JAB1 || s->move==MOVE_JAB2))s->queued_combo=1;
     if(s->hitstop) {--s->hitstop;return;}
     if(s->hitstun)--s->hitstun;
     if(s->brake_ticks)--s->brake_ticks;
     if(s->tap_age<100)++s->tap_age;
+    /* ftMainProcParams: the shield heals one point every 10 ticks while down. */
+    if(actions && !shielding(s) && s->action!=ACTION_FURAFURA && s->shield_health<SHIELD_HEALTH_MAX &&
+       --s->shield_heal_wait==0) {++s->shield_health;s->shield_heal_wait=SHIELD_HEAL_WAIT;}
     int dir=in.motion.stick_x>0?1:in.motion.stick_x<0?-1:0;
-    if(s->dash_ticks && (!dir || dir!=s->last_stick || !ground(&s->player) || s->attack_frame>=0)) {
-        if(!dir && ground(&s->player) && s->attack_frame<0)s->brake_ticks=24;
+    if(s->dash_ticks && (!dir || dir!=s->last_stick || !ground(&s->player) || s->attack_frame>=0 || s->action)) {
+        if(!dir && ground(&s->player) && s->attack_frame<0 && !s->action)s->brake_ticks=24;
         s->dash_ticks=0;s->run_age=0;
     }
     if(dir && dir!=s->last_stick && ground(&s->player)) {
-        if(dir==s->last_tap && s->tap_age<=10 && s->attack_frame<0) {s->dash_ticks=1;s->run_age=0;}
+        if(dir==s->last_tap && s->tap_age<=10 && s->attack_frame<0 && !s->action) {s->dash_ticks=1;s->run_age=0;}
         s->last_tap=dir;s->tap_age=0;
     }
     s->last_stick=dir;
     if(dir)s->brake_ticks=0;
     if(s->dash_ticks)++s->run_age;
+    if(s->action && actions)action_update(s,in,pressed,special,grab,shield_pressed);
     if(s->player.state==SCENE_SPECIAL_HI && s->attack_frame<0) {
         s->move=mario(s)?MOVE_UP:MOVE_UP_AIR;s->attack_frame=(int)s->player.state_ticks;
         s->attack_facing=s->player.facing;s->connected_strikes=0;s->spawned=0;
@@ -317,8 +537,13 @@ void combat_update(CombatScene *s,CombatInput in)
             combat_start_move(s,dir*s->attack_facing<0?MOVE_THROW_B:MOVE_THROW_F);
         else if(s->capture_age>90) {s->captured=0;s->attack_frame=-1;s->target.state=SCENE_AIR;}
     }
-    if(s->attack_frame<0) {
-        if(special && !mario(s) && s->item_throw) {
+    if(s->attack_frame<0 && !s->action) {
+        int jump_pressed=in.motion.jump_held && !s->player.jump_was_held;
+        if(actions && in.shield && s->shield_health>0 && ground(&s->player) && !s->item_throw && !s->captured && !jump_pressed) {
+            /* Z held: GuardOn; tapped while dashing: forward roll (ftCommonEscapeCheckInterruptDash). */
+            if(s->dash_ticks && shield_pressed)combat_action_start(s,ACTION_ESCAPE_F);
+            else combat_action_start(s,ACTION_GUARD_ON);
+        } else if(special && !mario(s) && s->item_throw) {
         } else if(special && !mario(s)) {
             if(dir)s->player.facing=dir;
             if(in.up)combat_start_move(s,air(&s->player)?MOVE_UP_AIR:MOVE_UP);
@@ -360,6 +585,7 @@ void combat_update(CombatScene *s,CombatInput in)
     const MoveFrame *f=s->attack_frame>=0?at(s,s->move,(unsigned)s->attack_frame):0;
     unsigned old_respawns=s->player.respawns,old_landings=s->player.landings,old_grabs=s->player.cliff_grabs;
     SceneInput motion=in.motion;
+    if(s->action) {motion.stick_x=0;motion.jump_held=0;in.drop=0;in.down=0;}
     if(f) {
         motion.jump_held=0;if(!air(&s->player))motion.stick_x=0;
         if(tornado(s,s->move)) {
@@ -385,7 +611,11 @@ void combat_update(CombatScene *s,CombatInput in)
     if(air(&s->player))s->player.facing=previous_facing;
     if(f)s->player.facing=s->attack_facing;
     s->facing=s->player.facing;
-    if(s->player.respawns!=old_respawns) {s->attack_frame=-1;s->captured=0;f=0;}
+    if(s->player.respawns!=old_respawns) {
+        s->attack_frame=-1;s->captured=0;f=0;s->action=ACTION_NONE;s->shield_health=SHIELD_HEALTH_MAX;
+    }
+    if(s->player.landings!=old_landings && (s->action==ACTION_SHIELD_BREAK_FLY || s->action==ACTION_SHIELD_BREAK_FALL))
+        combat_action_start(s,ACTION_SHIELD_BREAK_DOWN_U);
     if(s->player.landings!=old_landings || s->player.cliff_grabs!=old_grabs) {
         s->tornado_charge=1;
         if(s->attack_frame>=0 && (s->player.cliff_grabs!=old_grabs ||
@@ -437,6 +667,12 @@ void combat_resolve(CombatScene *s)
             const MoveHit *h=&s->fighter->hits[f->first+i];uint64_t bit=UINT64_C(1)<<h->strike;
             if(s->connected_strikes&bit)continue;
             if(!(h->ground_air&(hurt_air(&s->target)?1:2)))continue;
+            /* Shields stop everything but grabs (ftMainSearchHitFighter order). */
+            if(s->move!=MOVE_GRAB && shield_blocks(s,s->player.x+h->x*s->attack_facing,s->player.y+h->y,h->radius)) {
+                s->connected_strikes|=bit;
+                shield_hit(s,(unsigned)h->damage,(s->target.x-s->player.x)>=0?1:-1,h->sound);
+                continue;
+            }
             if(overlap(&s->target,s->player.x+h->x*s->attack_facing,s->player.y+h->y,h->radius)) {
                 s->connected_strikes|=bit;s->attack_connected=1;
                 if(s->move==MOVE_GRAB) {

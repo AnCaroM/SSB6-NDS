@@ -3,7 +3,7 @@
 #include "motion_scene.h"
 #include "moves.h"
 #include "fighter.h"
-typedef struct { SceneInput motion; int attack,special,grab,smash,up,down,variant,drop; } CombatInput;
+typedef struct { SceneInput motion; int attack,special,grab,smash,up,down,variant,drop,shield; } CombatInput;
 typedef struct { float x,y,vx,vy; unsigned life; int facing; } Fireball;
 /* Link's boomerang (wplinkboomerang.c, reduced): unit direction and speed. */
 typedef struct { float x,y,dx,dy,speed,turn; unsigned life,homing,age; int active,returning,hit,caught; } Boomerang;
@@ -32,6 +32,15 @@ typedef struct {
     int aim,boomerang_smash,boomerang_empty; /* aim: +1 up, -1 down at boomerang spawn */
     unsigned item_throw;                      /* ticks into a held-bomb throw, 0 none */
     float throw_vx,throw_vy;
+    /* Shield, rolls, techs and knockdowns (fighter.h FighterActionId; reduced
+     * from ftcommonguard/escape/passive/down/shieldbreak/furafura). */
+    unsigned action,action_tick,action_starts;
+    int action_facing,shield_release;
+    int shield_health;                        /* 55 full (ftmanager), 30 after a break */
+    unsigned shield_heal_wait,shield_decay_wait,setoff_ticks,down_wait,down_attack_buffer,breakout_wait;
+    int shield_was_held,shield_age,own_percent,mash_stick; /* shield_age: ticks since the last press */
+    float target_shield,target_shield_x,target_shield_y;   /* target's shield (snapshot), radius 0 = none */
+    unsigned shield_hits,shield_hit_damage,shield_hit_sound;int shield_hit_dir;
 } CombatScene;
 
 void combat_init(CombatScene *scene);
@@ -49,4 +58,14 @@ float combat_knockback_weight(unsigned percent,const MoveHit *hit,float weight);
 void combat_demo_begin(CombatScene *scene,unsigned index);
 /* In duel mode both controllers/physics run before either contact pass. */
 void combat_resolve(CombatScene *scene);
+/* Shield button edge/age (tech buffer); the duel calls it before input lock. */
+void combat_note_shield(CombatScene *scene,int held);
+/* Begin a status from outside (landing while damaged: tech or knockdown). */
+void combat_action_start(CombatScene *scene,unsigned action);
+/* Clip and age of the current action (0 when none). */
+unsigned combat_action_clip(const CombatScene *scene,unsigned *age);
+float combat_shield_radius(const CombatScene *scene); /* 0 unless the shield is up */
+int combat_intangible(const CombatScene *scene);      /* SetHitStatusAll(3) window */
+/* Victim side of a blocked hit: shield stun/push-back or shield break. */
+void combat_shield_hit(CombatScene *scene,unsigned damage,int dir);
 #endif

@@ -41,6 +41,8 @@ esos recursos y también se excluyen del repositorio y de la CI. Consultar
   ([Prueba17](docs/link-prueba17.md), sin probar en DS).
 - Boomerang y bomba de Link, agacharse para ambos
   ([Prueba18](docs/link-prueba18.md), sin probar en DS).
+- Escudo con desgaste y rotura, rodar, amortiguar la caída y levantarse del
+  suelo ([Prueba19](docs/escudo-prueba19.md), sin probar en DS).
 - Pruebas de lógica en PC, presupuestos DS y herramientas de inspección.
 - Pantalla de inicio y selección de modo (Prueba11, sin probar en DS);
   ver [docs/menu-prueba11.md](docs/menu-prueba11.md).
@@ -135,7 +137,8 @@ python tools/build_nds.py --devkitpro /opt/devkitpro --demo versus --skeletal-po
 | L, después X o dirección | Agarre y lanzamiento |
 | Abajo (en suelo) | Agacharse |
 | B / arriba+B / abajo+B | Mario: fuego / recuperación / Tornado; Link: bumerán / giro / bomba |
-| R | Cámara automática / mapa |
+| R | Escudo; con un toque lateral, rodar; justo antes de caer golpeado, amortiguar; en el suelo, levantarse |
+| Tocar la pantalla | Cámara automática / mapa |
 | START | Pausa |
 | SELECT | Alternar jugador contra CPU y CPU contra CPU; reinicia |
 | START + SELECT | Reiniciar |

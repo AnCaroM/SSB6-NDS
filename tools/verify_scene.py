@@ -36,6 +36,7 @@ def main():
                            ('tests/test_versus.c',build/('test_versus'+suffix)),
                            ('tests/test_damage.c',build/('test_damage'+suffix)),
                            ('tests/test_link.c',build/('test_link'+suffix)),
+                           ('tests/test_guard.c',build/('test_guard'+suffix)),
                            ('tests/test_animation_review.c',build/('test_animation_review'+suffix)),
                            ('tests/test_camera.c',build/('test_camera'+suffix)), ('src/scene_trace.c', trace)]:
         subprocess.run(compiler + flags + [source, '-o', str(output), '-lm'],
@@ -51,6 +52,7 @@ def main():
     result += subprocess.check_output([str(build/('test_versus'+suffix))], text=True)
     result += subprocess.check_output([str(build/('test_damage'+suffix))], text=True)
     result += subprocess.check_output([str(build/('test_link'+suffix))], text=True)
+    result += subprocess.check_output([str(build/('test_guard'+suffix))], text=True)
     result += subprocess.check_output([str(build/('test_animation_review'+suffix))], text=True)
     pose_test=build/('test_pose_bank'+suffix)
     subprocess.run(compiler+['-std=c11','-O2','-UNDEBUG','-DMARIO_COMPACT_POSES=1',

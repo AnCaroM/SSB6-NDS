@@ -45,7 +45,19 @@ COMMON_CLIPS=['Wait','WalkMiddle','Squat','SquatWait','SquatRv','LightThrowF','L
     'CliffCatch','CliffWait','CliffAttackQuick1','CliffAttackQuick2','CliffAttackSlow1','CliffAttackSlow2',
     'DownAttackD','DownAttackU','Catch','CatchPull','ThrowF','ThrowB','CapturePulled','Attack11','Attack12',
     'AttackDash','AttackS3','AttackHi3','AttackLw3','AttackS4','AttackHi4','AttackLw4','AttackAirN',
-    'AttackAirF','AttackAirB','AttackAirHi','AttackAirLw']
+    'AttackAirF','AttackAirB','AttackAirHi','AttackAirLw',
+    # Prueba19: shield, rolls, techs, knockdown and shield break (src/fighter.h FighterActionId).
+    'GuardOn','GuardOff','EscapeF','EscapeB','Passive','PassiveStandF','PassiveStandB',
+    'DownBounceD','DownBounceU','DownStandD','DownStandU','DownForwardD','DownForwardU','DownBackD','DownBackU',
+    'ShieldBreakFly','ShieldBreakFall','ShieldBreakDownD','ShieldBreakDownU','ShieldBreakStandD','ShieldBreakStandU','FuraFura']
+# FighterActionId order -> motion (GUARD and DOWN_WAIT_* hold GuardOn/DownBounce's last frame).
+ACTION_MOTIONS=[('NONE','Wait'),('GUARD_ON','GuardOn'),('GUARD','GuardOn'),('GUARD_OFF','GuardOff'),
+    ('ESCAPE_F','EscapeF'),('ESCAPE_B','EscapeB'),('PASSIVE','Passive'),('PASSIVE_F','PassiveStandF'),('PASSIVE_B','PassiveStandB'),
+    ('DOWN_BOUNCE_D','DownBounceD'),('DOWN_BOUNCE_U','DownBounceU'),('DOWN_WAIT_D','DownBounceD'),('DOWN_WAIT_U','DownBounceU'),
+    ('DOWN_STAND_D','DownStandD'),('DOWN_STAND_U','DownStandU'),('DOWN_FORWARD_D','DownForwardD'),('DOWN_FORWARD_U','DownForwardU'),
+    ('DOWN_BACK_D','DownBackD'),('DOWN_BACK_U','DownBackU'),('SHIELD_BREAK_FLY','ShieldBreakFly'),('SHIELD_BREAK_FALL','ShieldBreakFall'),
+    ('SHIELD_BREAK_DOWN_D','ShieldBreakDownD'),('SHIELD_BREAK_DOWN_U','ShieldBreakDownU'),
+    ('SHIELD_BREAK_STAND_D','ShieldBreakStandD'),('SHIELD_BREAK_STAND_U','ShieldBreakStandU'),('FURAFURA','FuraFura')]
 # Move slots (src/moves.h order) -> motion, with fallbacks for fighters
 # lacking angled variants (Link has one forward tilt and one forward smash).
 SLOT_MOTIONS={'JAB1':['Attack11'],'JAB2':['Attack12'],'JAB3':['Attack13'],'DASH':['AttackDash'],
@@ -64,7 +76,8 @@ FIGHTERS={
     # (Mario: legacy mario_moves world[12]/world[24]; Link: itemlight 16, itemheavy 35).
     'mario':dict(Name='Mario',spawn=12,grab=24,kind='FIGHTER_MARIO',attr='fighter_attr_mario',
                  sounds=dict(jump='VOICE_JUMP',jump_air='VOICE_JUMP_AIR',land='LAND',damage='VOICE_DAMAGE',
-                             dead='VOICE_DEAD',dead_slam='DEAD_SLAM',smash=['VOICE_SMASH1','VOICE_SMASH2','VOICE_SMASH3']),
+                             dead='VOICE_DEAD',dead_slam='DEAD_SLAM',smash=['VOICE_SMASH1','VOICE_SMASH2','VOICE_SMASH3'],
+                             down_bounce='DOWN_BOUNCE'),
                  model=296,main='203_MarioMain.c',motion='202_MarioMainMotion.c',base_parts={},itemlight=None,tree=0x2200,matanim=0x2680,table='dFTMarioMotionDescs',
                  special=['Attack13','SpecialN','SpecialAirN','SpecialHi','SpecialAirHi','SpecialLw','SpecialAirLw'],parts={}),
     # 324_LinkModel.c: dLinkModel_JointTree @0x3AE8; anim table +0x5B8 (225_LinkMain.c).
@@ -72,7 +85,8 @@ FIGHTERS={
     # itemlight: joint_itemlight_id used by SetModelPartID(-2, ...).
     'link':dict(Name='Link',spawn=12,grab=31,kind='FIGHTER_LINK',attr='fighter_attr_link',
                 sounds=dict(jump='LINK_JUMP',jump_air='LINK_JUMP_AIR',land='LINK_LAND',damage='LINK_DAMAGE',
-                            dead='LINK_DEAD',dead_slam='LINK_DEAD_SLAM',smash=['LINK_SMASH1','LINK_SMASH2','LINK_SMASH3']),
+                            dead='LINK_DEAD',dead_slam='LINK_DEAD_SLAM',smash=['LINK_SMASH1','LINK_SMASH2','LINK_SMASH3'],
+                            down_bounce='LINK_DOWN_BOUNCE'),
                 model=324,main='225_LinkMain.c',motion='224_LinkMainMotion.c',base_parts={21:-1,19:0},itemlight=16,tree=0x3AE8,matanim=0x3AE8+0x5B8,table='dFTLinkMotionDescs',
                 special=['Attack13','Attack100Start','Attack100Loop','Attack100End','SpecialHi','SpecialHiEnd',
                          'SpecialAirHi','SpecialN','SpecialNGet','SpecialNEmpty','SpecialAirN','SpecialLw','SpecialAirLw'],
@@ -113,11 +127,17 @@ def animated_joints(flags,roots,count):
     optional=set(roots[3:])
     return aux,[j for j in range(count) if j+4 not in optional or j+4 in enabled]
 
+def row_from_matrix(m):
+    """Channel row (tx,ty,tz,rx,ry,rz,sx,sy,sz) of a T*Rz*Ry*Rx*S matrix
+    (mario_skeleton._float_matrix convention)."""
+    r=m[:3,:3];s=np.linalg.norm(r,axis=0);r=r/s
+    ry=math.asin(max(-1.0,min(1.0,-r[2,0])));rx=math.atan2(r[2,1],r[2,2]);rz=math.atan2(r[1,0],r[0,0])
+    return [float(m[0,3]),float(m[1,3]),float(m[2,3]),rx,ry,rz,float(s[0]),float(s[1]),float(s[2])]
+
 def sample(data,word,depths,defaults,flags,ledge,single,roots):
     """Local channels [frame][joint+prefix][9] for one clip (mario_animation semantics)."""
     pointers=chain(data,word)
     aux,existing=animated_joints(flags,roots,len(depths))
-    if len(aux)>1:raise ValueError('More than one inserted joint is not supported')
     xrotn=bool(flags&fm.INSERT_XROTN)
     tables=[]
     for slot in range(len(aux)+len(existing)):
@@ -126,7 +146,9 @@ def sample(data,word,depths,defaults,flags,ledge,single,roots):
         tables.append(decode_script(data,ptr) if ptr is not None else None)
     if not any(tables):raise ValueError('Empty animation')
     duration=max(s[1] for s in tables if s);looping=any(s[2] for s in tables if s)
-    auxiliary=tables.pop(0) if aux else None
+    # Inserted joints come first, in tree order (TransN, XRotN, YRotN); with
+    # several (GuardOn: XRotN+YRotN) their transforms compose into one prefix.
+    auxiliaries=[tables.pop(0) for _ in aux]
     scripts=[None]*len(depths)
     for joint,script in zip(existing,tables):scripts[joint]=script
     if not 1<=duration<=400:raise ValueError('Unexpected clip duration')
@@ -134,11 +156,20 @@ def sample(data,word,depths,defaults,flags,ledge,single,roots):
     fields={0:3,1:4,2:5,4:0,5:1,6:2,7:6,8:7,9:8}
     frames=[]
     for frame in range(1 if single else ticks):
-        prefix=[0,0,0,0,0,0,1,1,1]
-        if auxiliary is not None:
-            for track,field in fields.items():
-                value=evaluate(auxiliary[0][track],min(frame,auxiliary[1]))
-                if value is not None:prefix[field]=value
+        prefixes=[]
+        for auxiliary in auxiliaries:
+            prefix=[0,0,0,0,0,0,1,1,1]
+            if auxiliary is not None:
+                for track,field in fields.items():
+                    value=evaluate(auxiliary[0][track],min(frame,auxiliary[1]))
+                    if value is not None:prefix[field]=value
+            prefixes.append(prefix)
+        if len(prefixes)>1:
+            composed=np.eye(4)
+            for prefix in prefixes:composed=composed@_float_matrix(prefix)
+            prefix=row_from_matrix(composed)
+            if np.abs(_float_matrix(prefix)-composed).max()>1e-6:raise ValueError('Inserted joints do not compose')
+        else:prefix=prefixes[0] if prefixes else [0,0,0,0,0,0,1,1,1]
         rows=[]
         for joint,values in enumerate(defaults):
             values=list(values)
@@ -151,7 +182,7 @@ def sample(data,word,depths,defaults,flags,ledge,single,roots):
         frames.append(rows+[prefix])
     # Root role of the inserted joint: 1 = drawn (XRotN, ledge-relative TransN),
     # 2 = TransN that the game applies as movement (drawn only in the viewer).
-    root=0 if auxiliary is None else 1 if xrotn or ledge else 2
+    root=0 if not aux else 1 if xrotn or ledge else 2
     return frames,ticks,looping,root
 
 def world(rows,parents,make):
@@ -185,9 +216,14 @@ def script_tables(Name):
             for n,body in re.findall(r'(?:ftMotionCommand|u32)\s+(\w+)\[\]\s*=\s*\{(.*?)\n\};',text,re.S)}
 
 PART_OPS=('ftMotionCommandSetModelPartID','ftMotionCommandResetModelPartAll','ftMotionCommandHideModelPartAll')
+HIT_STATUS_OP='ftMotionCommandSetHitStatusAll'
 
 def part_events(tables,symbol,limit):
-    """(clock, op, args) model-part commands of a motion script (fall-through,
+    """Model-part commands of a motion script (see script_events)."""
+    return script_events(tables,symbol,limit,PART_OPS)
+
+def script_events(tables,symbol,limit,ops):
+    """(clock, op, args) of the listed commands in a motion script (fall-through,
     Goto, Subroutine/Return and counted loops as in mario_moves.timeline)."""
     events=[];clock=0;budget=0;keys=list(tables)
     def run(name,depth=0):
@@ -217,10 +253,39 @@ def part_events(tables,symbol,limit):
                 name=args[0];code=list(tables[name]);i=0;loops=[]  # tail jump (looping scripts)
             elif op=='ftMotionCommandSubroutine' and args[0] in tables:
                 if run(args[0],depth+1)=='end':return 'end'
-            elif op in PART_OPS:events.append((clock,op,[int(a,0) for a in args]))
+            elif op in ops:events.append((clock,op,[int(a,0) for a in args]))
         return 'end'
     if symbol in tables:run(symbol)
     return events
+
+def export_actions(clips,float_frames,parents,motions,tables):
+    """FighterAction table (src/fighter.h order): clip, length, intangible
+    window (SetHitStatusAll 3..1), facing flip (SetFlag1), tick-0 sounds and,
+    for movement-TransN clips, the per-tick displacement the game applies."""
+    position={c['motion']:i for i,c in enumerate(clips)};unique={c['index']:c for c in clips if 'same' not in c}
+    lines=[];rows=[];shield=(0,0)
+    for action,motion in ACTION_MOTIONS:
+        entry=clips[position[motion]];index=entry.get('index',entry.get('same'));src=unique[index]
+        values,root=float_frames[index];ticks=src['ticks']
+        # DownBack* enter DownForwardU's array a few words in; every path there
+        # is a Goto to DownForwardD, so the base symbol has the same events.
+        script=re.sub(r'\s*\+\s*0x[0-9A-Fa-f]+$','',motions[motion]['script'] or '')
+        sequence=move_frames(tables,script,ticks) if script in tables else None
+        sounds=sequence[0]['sounds'] if sequence else [fs.NONE,fs.NONE]
+        turn=next((t for t,f in enumerate(sequence) if f['flags']&2),255) if sequence else 255
+        status=[(c,a[0]) for c,_,a in script_events(tables,script,ticks,(HIT_STATUS_OP,)) if a]
+        on=[c for c,st in status if st==3];off=[c for c,st in status if st==1 and on and c>=on[0]]
+        intangible=(min(on[0],ticks),min(off[0] if off else ticks,ticks)) if on else (0,0)
+        ref='NULL'
+        if root==2 and not action.startswith('DOWN_WAIT'):
+            z=[round(float(values[t][len(parents)][2])) for t in range(len(values))]
+            dx=[z[t]-(z[t-1] if t else 0) for t in range(len(z))]
+            lines.append(f'static const int16_t dx_{action.lower()}[{len(dx)}]={{'+','.join(map(str,dx))+'};');ref=f'dx_{action.lower()}'
+        if action=='GUARD':
+            last=values[len(values)-1][len(parents)];shield=(round(float(last[2])),round(float(last[1])))
+        rows.append(f'{{{position[motion]},{ticks},{intangible[0]},{intangible[1]},{turn},{{{sounds[0]},{sounds[1]}}},{ref}}}, /* {action} */')
+    lines.append('static const FighterAction actions[ACTION_COUNT]={');lines+=rows;lines.append('};')
+    return lines,shield
 
 def model_parts(Name):
     """{fighter joint: [hi display-list symbol per part id]} from FTModelPartContainer."""
@@ -293,10 +358,13 @@ def export_moves(name,cfg,clips,float_frames,parents,motions,tables):
     lines+=['static const MoveFrame move_frames[]={']+['{'+','.join(map(str,f))+'},' for f in allframes]+['};']
     lines+=['static const MoveDesc move_descs[MOVE_COUNT]={'+','.join(descs)+'};']
     lines+=['static const unsigned damage_ticks[17]={'+','.join(str(tick_of(m)) for m in damage)+'};']
+    actions,shield=export_actions(clips,float_frames,parents,motions,tables);lines+=actions
     lines+=[f'const Fighter fighter_{name}={{"{cfg["Name"]}",{cfg["kind"]},&{cfg["attr"]},move_hits,move_frames,move_descs,damage_ticks,',
             '    {'+','.join(map(str,clipmap))+',{'+','.join(str(clip(m)) for m in damage)+'}},',
-            '    {'+','.join(map(str,sounds))+','+smash+'},',
-            '    {'+','.join('{'+','.join(map(str,h))+'}' for h in throws)+'}};']
+            '    {'+','.join(map(str,sounds))+','+smash+','+str(SOUND[snd['down_bounce']])+'},',
+            '    {'+','.join('{'+','.join(map(str,h))+'}' for h in throws)+'},',
+            f'    actions,{shield[0]},{shield[1]}}};']
+    print(f'{cfg["Name"]}: shield centre ({shield[0]},{shield[1]})')
     return lines
 
 def convert(name,check_mario=False):

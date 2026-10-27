@@ -14,7 +14,27 @@ typedef struct {
     /* Local integration values (not FTAttributes fields): constant dash
      * velocity of the reduced dash/run and the fall-special air speed cap. */
     float dash_velocity,fall_special_speed;
+    float shield_size,shield_break_vel_y;
 } FighterAttributes;
+/* Shield, rolls, techs and knockdowns (ftcommonguard1/2, escape, passive,
+ * down*, shieldbreak* and furafura .c). Each entry names the clip of one
+ * status; GUARD and DOWN_WAIT_* hold the last frame of GuardOn / DownBounce. */
+typedef enum {
+    ACTION_NONE,ACTION_GUARD_ON,ACTION_GUARD,ACTION_GUARD_OFF,ACTION_ESCAPE_F,ACTION_ESCAPE_B,
+    ACTION_PASSIVE,ACTION_PASSIVE_F,ACTION_PASSIVE_B,
+    ACTION_DOWN_BOUNCE_D,ACTION_DOWN_BOUNCE_U,ACTION_DOWN_WAIT_D,ACTION_DOWN_WAIT_U,
+    ACTION_DOWN_STAND_D,ACTION_DOWN_STAND_U,ACTION_DOWN_FORWARD_D,ACTION_DOWN_FORWARD_U,
+    ACTION_DOWN_BACK_D,ACTION_DOWN_BACK_U,
+    ACTION_SHIELD_BREAK_FLY,ACTION_SHIELD_BREAK_FALL,ACTION_SHIELD_BREAK_DOWN_D,ACTION_SHIELD_BREAK_DOWN_U,
+    ACTION_SHIELD_BREAK_STAND_D,ACTION_SHIELD_BREAK_STAND_U,ACTION_FURAFURA,ACTION_COUNT
+} FighterActionId;
+typedef struct {
+    uint16_t clip,ticks;
+    uint8_t intangible_from,intangible_to; /* SetHitStatusAll(3) .. (1); equal = none */
+    uint8_t turn_tick;                     /* SetFlag1 tick (facing flips), 255 none */
+    uint8_t sound[2];                      /* FightSound played at tick 0, 255 none */
+    const int16_t *dx;                     /* per-tick TransN movement (facing units) or NULL */
+} FighterAction;
 typedef enum { FIGHTER_MARIO, FIGHTER_LINK, FIGHTER_KIND_COUNT } FighterKind;
 /* Clip ids for the reduced scene states (indices into the fighter's clips). */
 typedef struct {
@@ -23,7 +43,7 @@ typedef struct {
     uint16_t item_throw,item_throw_air,damage[17];
 } FighterClipMap;
 /* FightSound ids: script-independent voices and effects (FTAttributes). */
-typedef struct { uint8_t jump,jump_air,land,damage,dead,dead_slam,smash[3]; } FighterSounds;
+typedef struct { uint8_t jump,jump_air,land,damage,dead,dead_slam,smash[3],down_bounce; } FighterSounds;
 typedef struct {
     const char *name;
     FighterKind kind;
@@ -33,6 +53,8 @@ typedef struct {
     FighterClipMap clips;
     FighterSounds sounds;
     MoveHit throws[2];              /* FTThrowHitDesc of ThrowF / ThrowB */
+    const FighterAction *actions;   /* ACTION_COUNT entries, NULL for the legacy demos */
+    int16_t shield_x,shield_y;      /* YRotN at the end of GuardOn: shield centre */
 } Fighter;
 extern const FighterAttributes fighter_attr_mario,fighter_attr_link;
 /* Mario data linked into the build (legacy or generic pipeline). */

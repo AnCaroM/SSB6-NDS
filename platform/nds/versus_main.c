@@ -116,6 +116,21 @@ static void draw_bomb(const Bomb *m)
     glPopMatrix(1);
 }
 
+/* Shield bubble: translucent disc of the original collision radius, red for
+ * side 0 and blue for side 1 (the N64 colours by port). */
+static void draw_shield(float x,float y,float radius,unsigned side)
+{
+    glPushMatrix();glTranslatef32(floattof32(x/WORLD_UNIT),floattof32(y/WORLD_UNIT),floattof32(.5f));
+    glScalef32(floattof32(radius/WORLD_UNIT),floattof32(radius/WORLD_UNIT),inttof32(1));
+    glBindTexture(0,0);
+    glPolyFmt(POLY_ALPHA(9)|POLY_CULL_NONE|POLY_ID(50+side));
+    glColor(side?RGB15(10,16,31):RGB15(31,12,12));
+    glBegin(GL_TRIANGLE);
+    for(unsigned i=0;i<EMBLEM_SEGMENTS;++i) {glVertex3v16(0,0,0);glVertex3v16(ring[i][0],ring[i][1],0);glVertex3v16(ring[i+1][0],ring[i+1][1],0);}
+    glEnd();
+    glPopMatrix(1);
+}
+
 /* Mario's fireball: MarioSpecial3 sprite on one textured quad. */
 static int fireball_texture;
 static void draw_fireball(float x,float y,unsigned age)
@@ -186,7 +201,7 @@ static void draw_title(int prompt)
         at(6,10,RED,"N   D   S");
         at(10,2,WHITE,"Port experimental de SSB64");
         at(11,2,WHITE,"para Nintendo DS / DS Lite");
-        at(21,1,GREEN,"Prueba 18 - mapa: Dream Land");
+        at(21,1,GREEN,"Prueba 19 - mapa: Dream Land");
         at(22,1,GREEN,"No es el juego completo");
         prompt=1;
     }
@@ -254,8 +269,9 @@ static void draw_hud_frame(const Versus *match,int watch)
     at(4,2,RED,watch?"CPU 1":"TU");at(4,18,BLUE,watch?"CPU 2":"CPU");
     at(4,7,WHITE,match->kinds[0]->name);at(4,23,WHITE,match->kinds[1]->name);
     at(11,1,WHITE,"X golpe  A salto  B especial");
-    at(12,1,WHITE,"L agarre Y+X smash R camara");
+    at(12,1,WHITE,"L agarre Y+X smash R escudo");
     at(13,1,WHITE,"START pausa  SELECT modo");
+    at(14,1,WHITE,"Toca la pantalla: mapa");
     at(15,0,CYAN,"--------------------------------");
 }
 
@@ -340,7 +356,7 @@ int main(void)
     int in_menu=!SCENE_AUTOPLAY,fade=16,prompt=-1,hud_dirty=1,viewing=0;
     Viewer viewer={0,0,0,0,1,1};
     unsigned clips[2]={0},ages[2]={0};int paused=0,watch=SCENE_AUTOPLAY,map_view=0;
-    unsigned rendered_age[2]={0},blend_left[2]={0};
+    unsigned rendered_age[2]={0},blend_left[2]={0},action_ages[2]={0};
     int damage_pose[2]={-1,-1};FighterBlend blends[2]={{0}};
 #ifdef ANIMATION_REVIEW
     unsigned review_clock=0;
@@ -439,12 +455,13 @@ int main(void)
                 menu_input_filter(&input_gate,&held,&down);
             }
         }
-        if(down&KEY_R)map_view=!map_view;
+        if(down&KEY_TOUCH)map_view=!map_view;
         CombatInput input[2]={0};
         input[0].motion.stick_x=((held&KEY_RIGHT)?80:0)-((held&KEY_LEFT)?80:0);
         input[0].motion.jump_held=!!(held&KEY_A);input[0].attack=!!(held&KEY_X);
         input[0].special=!!(held&KEY_B);input[0].grab=!!(held&KEY_L);
         input[0].smash=!!(held&KEY_Y);input[0].variant=input[0].grab;
+        input[0].shield=!!(held&KEY_R); /* N64 Z: shield, rolls, tech, stand up */
         input[0].up=!!(held&KEY_UP);input[0].down=!!(held&KEY_DOWN);
         input[0].drop=!!(down&KEY_DOWN) && !input[0].attack && !input[0].special;
         u16 sim_start=timerTick(0);
@@ -468,16 +485,18 @@ int main(void)
                 if(s->item_throw)next=s->player.state==SCENE_AIR?c->item_throw_air:c->item_throw;
                 else if(s->dash_ticks)next=s->run_age<render_of(f)->model->clips[c->dash].ticks?c->dash:c->run;
                 else if(s->brake_ticks)next=c->brake;
+                /* Shield, roll, tech, knockdown and dizzy statuses own the clip and its age. */
+                if(s->action)next=combat_action_clip(s,&action_ages[i]);
                 if(versus_captured(&match,i))next=c->capture;
                 int pose=versus_damage_pose(&match,i);
                 if(pose>=0)next=pose==17?c->damage_fall:c->damage[pose];
                 if(blend_left[i])--blend_left[i];
                 if(damage_pose[i]>=0 && (pose<0 || pose==17) && next!=clips[i] &&
-                   s->attack_frame<0 && !versus_captured(&match,i)) {
+                   s->attack_frame<0 && !s->action && !versus_captured(&match,i)) {
                     blends[i]=(FighterBlend){clips[i],rendered_age[i],0};blend_left[i]=2;
                 }
                 if(pose>=0 && pose!=17 && pose!=damage_pose[i])blend_left[i]=0;
-                if(s->attack_frame>=0)blend_left[i]=0;
+                if(s->attack_frame>=0 || s->action)blend_left[i]=0;
                 blends[i].weight=256-blend_left[i]*256/3;
                 damage_pose[i]=pose;
                 ages[i]=next==clips[i]?ages[i]+1:0;clips[i]=next;
@@ -503,7 +522,7 @@ int main(void)
             /* Same character on both sides: tint the CPU blue, as before. */
             unsigned tint=i && match.kinds[0]==match.kinds[1]?RGB15(12,24,31):0x7fff;
             if(match.stun[i] && match.freeze)tint=RGB15(31,12,12);
-            unsigned age=s->attack_frame>=0?(unsigned)s->attack_frame:ages[i];
+            unsigned age=s->attack_frame>=0?(unsigned)s->attack_frame:s->action?action_ages[i]:ages[i];
             if(damage_pose[i]>=0) {
                 age=match.reaction[i].age;
                 if(damage_pose[i]==17)age-=f->damage_ticks[match.reaction[i].pose];
@@ -517,6 +536,8 @@ int main(void)
             if(!match.invulnerable[i] || (match.tick&4))
                 actor(f,&s->player,s->player.facing,clips[i],age,tint,blend_left[i]?&blends[i]:NULL);
             r->part_set=r->part_clear=0;
+            float shield=combat_shield_radius(s);
+            if(shield>0)draw_shield(s->player.x+f->shield_x*s->player.facing,s->player.y+f->shield_y,shield,i);
             for(unsigned j=0;j<4;++j)if(s->fireballs[j].life)
                 draw_fireball(s->fireballs[j].x,s->fireballs[j].y,140-s->fireballs[j].life);
             if(s->boomerang.active)draw_boomerang(&s->boomerang);

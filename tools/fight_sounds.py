@@ -61,6 +61,13 @@ SOUNDS=[
     ('BOOMERANG_CATCH','nSYAudioFGMLinkSpecialNGet',1,.5),
     ('BOMB_GET','nSYAudioFGMLinkSpecialLwGet',1,.5),
     ('EXPLODE_L','nSYAudioFGMExplodeL',4,1.),
+    # Prueba19: shield up/down/break, rolls and techs, Link's knockdown and tech grunt.
+    ('GUARD_ON','nSYAudioFGMGuardOn',1,.5),
+    ('GUARD_OFF','nSYAudioFGMGuardOff',1,.5),
+    ('SHIELD_BREAK','nSYAudioFGMShieldBreak',4,1.),
+    ('ESCAPE','nSYAudioFGMEscape',1,.5),
+    ('LINK_DOWN_BOUNCE','nSYAudioFGMLinkDownBounce',1,.5),
+    ('LINK_GRUNT2','nSYAudioVoiceLinkGrunt2',2,.5),
 ]
 NONE=255
 SMASH_RANDOM=254  # PlaySmashVoice; runtime picks VOICE_SMASH1..3
