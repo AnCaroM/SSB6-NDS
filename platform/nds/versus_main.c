@@ -10,6 +10,13 @@
 #include "fight_audio.h"
 #include "fighter_render.h"
 #include "link_model.h"
+#if SCENE_AUTOPLAY && !defined(ANIMATION_REVIEW)
+#include <nds/debug.h>
+/* Benchmark results, read by tools/bench_melonds.py through melonDS's GDB
+ * stub: windows, then per 600-frame window avg/peak work and peak sim (us). */
+volatile unsigned bench_report[2+3*16+4]; /* + stage, fighters, HUD avg, HUD peak (last window) */
+#define BENCH_US(a,b) ((unsigned)((u64)(u16)((b)-(a))*1000000/(BUS_CLOCK/64)))
+#endif
 #ifdef ANIMATION_REVIEW
 #include "animation_review.h"
 #endif
@@ -40,7 +47,24 @@
 static FighterRender renders[MENU_FIGHTER_COUNT];
 static const Fighter *const fighters[MENU_FIGHTER_COUNT]={&fighter_mario,&fighter_link};
 static const FighterModel *const models[MENU_FIGHTER_COUNT]={&mario_model,&link_model};
-static const FighterRender *render_of(const Fighter *f) {return &renders[f==&fighter_link];}
+static unsigned fighter_index(const Fighter *f)
+{for(unsigned i=0;i<MENU_FIGHTER_COUNT;++i)if(fighters[i]==f)return i;return 0;}
+static FighterRender *render_of(const Fighter *f) {return &renders[fighter_index(f)];}
+/* Vertex tints with prebuilt display lists: normal, CPU mirror match, hit flash. */
+#define TINT_CPU RGB15(12,24,31)
+#define TINT_HIT RGB15(31,12,12)
+static const unsigned list_tints[3]={0x7fff,TINT_CPU,TINT_HIT};
+/* Only the fighters on screen keep textures in VRAM (with Dream Land's) and
+ * display lists in RAM; the others are unloaded. Returns 0 if a load failed. */
+static int make_resident(unsigned a,unsigned b)
+{
+    for(unsigned i=0;i<MENU_FIGHTER_COUNT;++i)if(renders[i].loaded && i!=a && i!=b)fighter_render_unload(&renders[i]);
+    for(unsigned i=0;i<MENU_FIGHTER_COUNT;++i)if(!renders[i].loaded && (i==a || i==b) &&
+        !fighter_render_load(&renders[i],models[i],list_tints,3))return 0;
+    return 1;
+}
+static int match_resident(const Versus *v)
+{return make_resident(fighter_index(v->kinds[0]),fighter_index(v->solo?v->kinds[0]:v->kinds[1]));}
 static unsigned up_clip(const Fighter *f) {return f->moves[f->kind==FIGHTER_MARIO?MOVE_UP:MOVE_UP_AIR].clip;}
 
 static unsigned clip_for(const Fighter *f,const MotionScene *s)
@@ -82,7 +106,7 @@ static void draw_boomerang(const Boomerang *b)
 {
     glPushMatrix();glTranslatef32(floattof32(b->x/WORLD_UNIT),floattof32(b->y/WORLD_UNIT),floattof32(.2f));
     glRotateZi((int)(b->age*3600)&32767);glRotateYi(8192);
-    fighter_render_draw_part(&renders[1],LINK_PART_11_1,0x7fff);
+    fighter_render_draw_part(render_of(&fighter_link),LINK_PART_11_1,0x7fff);
     glPopMatrix(1);
 }
 
@@ -307,7 +331,7 @@ int main(void)
     /* Textures: fighters in bank A, Dream Land in B (+A), palettes in E. */
     vramSetBankA(VRAM_A_TEXTURE);glEnable(GL_TEXTURE_2D);
     int ready=dreamland_render_init() && glGenTextures(1,&fireball_texture);
-    for(unsigned i=0;i<MENU_FIGHTER_COUNT && ready;++i)ready=fighter_render_init(&renders[i],models[i]);
+    for(unsigned i=0;i<MENU_FIGHTER_COUNT;++i)renders[i].model=models[i]; /* clip data, even when unloaded */
     if(ready) {
         glBindTexture(0,fireball_texture);
         ready=glTexImage2D(0,0,GL_RGBA,TEXTURE_SIZE_16,TEXTURE_SIZE_16,0,0,mario_fireball_pixels);
@@ -319,6 +343,12 @@ int main(void)
     glEnable(GL_ANTIALIAS);glEnable(GL_BLEND);glClearColor(14,24,30,31);glClearPolyID(63);
     glClearDepth(0x7fff);glViewport(0,0,255,191);
     static Versus match;versus_init(&match);
+#if SCENE_AUTOPLAY && !defined(ANIMATION_REVIEW)
+    /* Benchmark build: CPU vs CPU Link vs Link (worst geometry), timing
+     * every 600 frames into bench_report (and the NoCash debug port). */
+    versus_init_fighters(&match,&fighter_link,&fighter_link);match_resident(&match);
+    unsigned bench_sum=0,bench_frames=0,bench_peak=0,bench_sim_peak=0,bench_stage=0,bench_actors=0,bench_hud=0,bench_hud_peak=0;
+#endif
     FightCamera camera;camera_reset(&camera);
     Menu menu;menu_init(&menu);
     MenuInputGate input_gate={0};
@@ -352,6 +382,7 @@ int main(void)
                 in_menu=0;watch=action==MENU_PLAY_DEMO;fade=16;hud_dirty=1;
                 if(action==MENU_PLAY_EXPLORE)versus_init_solo(&match,fighters[menu.pick[0]]);
                 else versus_init_fighters(&match,fighters[menu.pick[0]],fighters[menu.pick[1]]);
+                match_resident(&match);
                 camera_reset(&camera);
                 menu_input_arm(&input_gate,physical_held);
                 paused=map_view=0;peak_us=over_budget=0;ages[0]=ages[1]=clips[0]=clips[1]=0;
@@ -373,8 +404,12 @@ int main(void)
             emblem_draw(0,height*.17f,height*.25f);
             glTranslatef32(floattof32(-cx/WORLD_UNIT),floattof32(-cy/WORLD_UNIT),floattof32(-6));
             dreamland_render_draw();
-            for(unsigned i=0;i<2;++i)
-                actor(fighters[i],&match.fighter[i].player,match.fighter[i].player.facing,fighters[i]->clips.wait,menu.ticks,0x7fff,NULL);
+            /* The current picks idle on the title (and are the resident pair). */
+            make_resident(menu.pick[0],menu.pick[1]);
+            for(unsigned i=0;i<2;++i) {
+                const Fighter *f=fighters[menu.pick[i]];
+                actor(f,&match.fighter[i].player,match.fighter[i].player.facing,f->clips.wait,menu.ticks,0x7fff,NULL);
+            }
             glFlush(0);
             swiWaitForVBlank();
             continue;
@@ -458,14 +493,20 @@ int main(void)
         float cx=map_view?0:camera.x/16.0f,cy=map_view?1400:camera.y/16.0f;
         glMatrixMode(GL_PROJECTION);glLoadIdentity();glOrtho(-half_width,half_width,bottom,height+bottom,.1,20);
         glMatrixMode(GL_MODELVIEW);glLoadIdentity();
+#if SCENE_AUTOPLAY && !defined(ANIMATION_REVIEW)
+        u16 mark_stage=timerTick(0);
+#endif
         dreamland_render_background(-half_width,half_width,bottom,height+bottom);
         glTranslatef32(floattof32(-cx/WORLD_UNIT),floattof32(-cy/WORLD_UNIT),floattof32(-6));
         dreamland_render_draw();
+#if SCENE_AUTOPLAY && !defined(ANIMATION_REVIEW)
+        u16 mark_actors=timerTick(0);bench_stage+=BENCH_US(mark_stage,mark_actors);
+#endif
         for(unsigned i=0;i<sides;++i) {
             CombatScene *s=&match.fighter[i];const Fighter *f=s->fighter;
             /* Same character on both sides: tint the CPU blue, as before. */
-            unsigned tint=i && match.kinds[0]==match.kinds[1]?RGB15(12,24,31):0x7fff;
-            if(match.stun[i] && match.freeze)tint=RGB15(31,12,12);
+            unsigned tint=i && match.kinds[0]==match.kinds[1]?TINT_CPU:0x7fff;
+            if(match.stun[i] && match.freeze)tint=TINT_HIT;
             unsigned age=s->attack_frame>=0?(unsigned)s->attack_frame:s->action?action_ages[i]:ages[i];
             if(damage_pose[i]>=0) {
                 age=match.reaction[i].age;
@@ -475,7 +516,7 @@ int main(void)
             }
             rendered_age[i]=age;
             /* Holding a bomb: shield on the back (itmain pickup sets base parts 21/19). */
-            FighterRender *r=&renders[f==&fighter_link];
+            FighterRender *r=render_of(f);
             if(f==&fighter_link && s->bomb.state==BOMB_HELD) {r->part_set=1u<<LINK_PART_21_0;r->part_clear=1u<<LINK_PART_19_0;}
             if(!match.invulnerable[i] || (match.tick&4))
                 actor(f,&s->player,s->player.facing,clips[i],age,tint,blend_left[i]?&blends[i]:NULL);
@@ -487,6 +528,9 @@ int main(void)
             if(s->boomerang.active)draw_boomerang(&s->boomerang);
             if(s->bomb.state!=BOMB_NONE)draw_bomb(&s->bomb);
         }
+#if SCENE_AUTOPLAY && !defined(ANIMATION_REVIEW)
+        u16 mark_hud=timerTick(0);bench_actors+=BENCH_US(mark_actors,mark_hud);
+#endif
         glFlush(0);
         if(hud_dirty) {draw_hud_frame(&match,watch);hud_dirty=0;}
         if((match.tick&15)==0 || paused || match.winner>=0) {
@@ -495,6 +539,9 @@ int main(void)
             iprintf(" Pico:%uus >16.7ms:%u       \n",peak_us,over_budget);
             iprintf(" Periodo:%uus              \n",period_us);
         }
+#if SCENE_AUTOPLAY && !defined(ANIMATION_REVIEW)
+        {unsigned hud=BENCH_US(mark_hud,timerTick(0));bench_hud+=hud;if(hud>bench_hud_peak)bench_hud_peak=hud;}
+#endif
 #ifdef ANIMATION_REVIEW
         iprintf("\x1b[21;1HRevision %-8s t:%3u       ",match.fighter[0].fighter->moves[match.fighter[0].move].name,match.tick);
         iprintf("\x1b[22;1HReaccion:%2d edad:%3u      ",versus_damage_pose(&match,1),match.reaction[1].age);
@@ -502,6 +549,23 @@ int main(void)
         work_us=(unsigned)((u64)(u16)(timerTick(0)-start)*1000000/(BUS_CLOCK/64));
         if(work_us>peak_us)peak_us=work_us;
         if(work_us>16667)++over_budget;
+#if SCENE_AUTOPLAY && !defined(ANIMATION_REVIEW)
+        bench_sum+=work_us;++bench_frames;if(work_us>bench_peak)bench_peak=work_us;
+        if(sim_us>bench_sim_peak)bench_sim_peak=sim_us;
+        if(bench_frames==600) {
+            char line[96];
+            snprintf(line,sizeof line,"BENCH tick=%u avg=%u peak=%u sim_peak=%u over=%u\n",
+                     match.tick,bench_sum/bench_frames,bench_peak,bench_sim_peak,over_budget);
+            nocashMessage(line);
+            unsigned w=bench_report[0];
+            if(w<16) {bench_report[2+w*3]=bench_sum/bench_frames;bench_report[3+w*3]=bench_peak;bench_report[4+w*3]=bench_sim_peak;}
+            bench_report[1]=over_budget;bench_report[0]=w+1;
+            bench_report[50]=bench_stage/bench_frames;bench_report[51]=bench_actors/bench_frames;
+            bench_report[52]=bench_hud/bench_frames;bench_report[53]=bench_hud_peak;
+            bench_sum=bench_frames=bench_peak=bench_sim_peak=bench_stage=bench_actors=bench_hud=bench_hud_peak=0;
+            if(match.winner>=0)versus_init_fighters(&match,&fighter_link,&fighter_link);
+        }
+#endif
         swiWaitForVBlank();
     }
     return 0;

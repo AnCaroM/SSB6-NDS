@@ -41,10 +41,15 @@ def main():
                         'Submitted geometry differs from clipped geometry','Runtime GPU/CPU time needs hardware measurement']}
     if report['arm9_static_bytes']>report['arm9_static_budget']: raise ValueError('ARM9 static RAM budget exceeded')
     if 'build/fighters/mario/mario_model.c' in info['sources']:
-        # Prueba17+: both selectable fighters are generic converted models that
-        # share the A+B texture banks; worst case is Link vs Link geometry.
-        fighters=[json.loads((ROOT/f'build/fighters/{f}/{f}-info.json').read_text()) for f in ('mario','link')]
-        report['shared_texture_bytes']=stage_textures+512+sum(f['texture_bytes'] for f in fighters)
+        # Prueba17+: selectable fighters are generic converted models sharing
+        # the A+B texture banks with Dream Land; worst geometry is the largest
+        # fighter twice. Pose banks of every fighter stay linked in RAM.
+        names=[f for f in ('mario','link','kirby') if f'build/fighters/{f}/{f}_model.c' in info['sources']]
+        fighters=[json.loads((ROOT/f'build/fighters/{f}/{f}-info.json').read_text()) for f in names]
+        # Prueba20+: only the two fighters of a match are resident in VRAM
+        # (versus_main make_resident), so the worst pair bounds the textures.
+        pairs=[(a,b) for a in fighters for b in fighters]
+        report['shared_texture_bytes']=stage_textures+512+max(a['texture_bytes']+(b['texture_bytes'] if b is not a else 0) for a,b in pairs)
         report['shared_pose_bytes']=sum(f['pose_bytes'] for f in fighters)
         report['fighters']={f['fighter']:dict(pose_bytes=f['pose_bytes'],texture_bytes=f['texture_bytes'],
                             triangles=f['triangles']) for f in fighters}
@@ -55,8 +60,9 @@ def main():
         audio=json.loads((ROOT/'build/audio/audio-info.json').read_text())
         report['shared_audio_pcm_bytes']=audio['bytes']
         report['audio_channels']=audio['channel_limit']
-        # Mario + Link effects/voices, PCM8 16 kHz (~314 KiB). IMA-ADPCM would halve it.
-        if audio['bytes']>400*1024:raise ValueError('Audio bank exceeded 400 KiB')
+        # Effects/voices, PCM8 16 kHz. IMA-ADPCM would halve it but measured
+        # far noisier on these bright sounds (Prueba20 study), so PCM8 stays.
+        if audio['bytes']>512*1024:raise ValueError('Audio bank exceeded 512 KiB')
     elif args.demo=='versus':
         report['shared_audio_pcm_bytes']=0;report['audio_channels']=0
     if report['shared_texture_bytes']>report['texture_capacity_bytes']: raise ValueError('Texture banks exceeded')

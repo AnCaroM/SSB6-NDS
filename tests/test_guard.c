@@ -60,7 +60,7 @@ int main(void)
     assert(v.fighter[0].action==ACTION_ESCAPE_F && v.fighter[0].player.facing==1); /* drawn facing holds until the end */
     for(unsigned t=0;t<14;++t)versus_step(&v,in);
     assert(v.fighter[0].action==ACTION_NONE && v.fighter[0].player.facing==-1);
-    assert(v.fighter[0].player.x-x0>850 && v.fighter[0].player.x-x0<950); /* the full 900 of RollF's TransN */
+    assert(v.fighter[0].player.x-x0>950 && v.fighter[0].player.x-x0<1060); /* RollF TransN 900 x Mario size 1.12 */
     v.fighter[0].player.x=2250;in[0].shield=1;
     for(unsigned t=0;t<8;++t)versus_step(&v,in);
     in[0].motion.stick_x=80;versus_step(&v,in); /* facing -1: the back roll goes right */
@@ -128,7 +128,7 @@ int main(void)
     in[1].motion.stick_x=-80*facing;versus_step(&v,in);
     assert(v.fighter[1].action==ACTION_DOWN_BACK_U);in[1].motion.stick_x=0;
     for(unsigned t=0;t<40;++t)versus_step(&v,in);
-    assert(v.fighter[1].action==ACTION_NONE && (v.fighter[1].player.x-before)*facing< -900); /* 1050 by TransN */
+    assert(v.fighter[1].action==ACTION_NONE && (v.fighter[1].player.x-before)*facing< -1000); /* 1050 by TransN x size 1.12 */
     v=launched();in[0]=in[1]=(CombatInput){0};
     v.fighter[1].player.y=10;v.fighter[1].player.x=0;v.fighter[1].player.vy=-20;v.launch_y[1]=-40;
     for(unsigned t=0;t<1+27+179;++t)versus_step(&v,in);

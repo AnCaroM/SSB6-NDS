@@ -60,21 +60,24 @@ ACTION_MOTIONS=[('NONE','Wait'),('GUARD_ON','GuardOn'),('GUARD','GuardOn'),('GUA
     ('SHIELD_BREAK_STAND_D','ShieldBreakStandD'),('SHIELD_BREAK_STAND_U','ShieldBreakStandU'),('FURAFURA','FuraFura')]
 # Move slots (src/moves.h order) -> motion, with fallbacks for fighters
 # lacking angled variants (Link has one forward tilt and one forward smash).
-SLOT_MOTIONS={'JAB1':['Attack11'],'JAB2':['Attack12'],'JAB3':['Attack13'],'DASH':['AttackDash'],
+SLOT_MOTIONS={'JAB1':['Attack11'],'JAB2':['Attack12'],'JAB3':['Attack13','Attack100Start'],'DASH':['AttackDash'],
     'FTILT_HI':['AttackS3Hi','AttackS3'],'FTILT':['AttackS3'],'FTILT_LO':['AttackS3Lw','AttackS3'],
     'UTILT':['AttackHi3'],'DTILT':['AttackLw3'],'FSMASH_HI':['AttackS4Hi','AttackS4'],
     'FSMASH_MHI':['AttackS4HiS','AttackS4'],'FSMASH':['AttackS4'],'FSMASH_MLO':['AttackS4LwS','AttackS4'],
     'FSMASH_LO':['AttackS4Lw','AttackS4'],'USMASH':['AttackHi4'],'DSMASH':['AttackLw4'],
     'NAIR':['AttackAirN'],'FAIR':['AttackAirF'],'BAIR':['AttackAirB'],'UAIR':['AttackAirHi'],'DAIR':['AttackAirLw'],
-    'GRAB':['Catch'],'THROW_F':['ThrowF'],'THROW_B':['ThrowB'],'FIRE':['SpecialN'],'FIRE_AIR':['SpecialAirN'],
-    'UP':['SpecialHi'],'TORNADO':['SpecialLw'],'TORNADO_AIR':['SpecialAirLw'],'GETUP_D':['DownAttackD'],
+    'GRAB':['Catch'],'THROW_F':['ThrowF'],'THROW_B':['ThrowB'],'FIRE':['SpecialN','SpecialNStart'],
+    'FIRE_AIR':['SpecialAirN','SpecialAirNStart'],'UP':['SpecialHi'],'TORNADO':['SpecialLw','SpecialLwStart'],
+    'TORNADO_AIR':['SpecialAirLw','SpecialAirLwStart'],'GETUP_D':['DownAttackD'],
     'GETUP_U':['DownAttackU'],'LEDGE_START':['CliffAttackQuick1'],'LEDGE':['CliffAttackQuick2'],
     'LEDGE_SLOW_START':['CliffAttackSlow1'],'LEDGE_SLOW':['CliffAttackSlow2'],'GRAB_HOLD':['CatchPull'],
     'UP_AIR':['SpecialAirHi']}
 FIGHTERS={
+    # size: FTAttributes.size (US), the fighter DObj scale. The game scales the
+    # model, its hit offsets and TransN movement by it; hit radii are not.
     # spawn/grab: tree joints for projectile spawn and captured-fighter anchor
     # (Mario: legacy mario_moves world[12]/world[24]; Link: itemlight 16, itemheavy 35).
-    'mario':dict(Name='Mario',spawn=12,grab=24,kind='FIGHTER_MARIO',attr='fighter_attr_mario',
+    'mario':dict(Name='Mario',size=1.12,spawn=12,grab=24,kind='FIGHTER_MARIO',attr='fighter_attr_mario',
                  sounds=dict(jump='VOICE_JUMP',jump_air='VOICE_JUMP_AIR',land='LAND',damage='VOICE_DAMAGE',
                              dead='VOICE_DEAD',dead_slam='DEAD_SLAM',smash=['VOICE_SMASH1','VOICE_SMASH2','VOICE_SMASH3'],
                              down_bounce='DOWN_BOUNCE'),
@@ -83,7 +86,7 @@ FIGHTERS={
     # 324_LinkModel.c: dLinkModel_JointTree @0x3AE8; anim table +0x5B8 (225_LinkMain.c).
     # base_parts: ftManagerInitFighter (ftmanager.c:639-644) after tree defaults;
     # itemlight: joint_itemlight_id used by SetModelPartID(-2, ...).
-    'link':dict(Name='Link',spawn=12,grab=31,kind='FIGHTER_LINK',attr='fighter_attr_link',
+    'link':dict(Name='Link',size=1.24,spawn=12,grab=31,kind='FIGHTER_LINK',attr='fighter_attr_link',
                 sounds=dict(jump='LINK_JUMP',jump_air='LINK_JUMP_AIR',land='LINK_LAND',damage='LINK_DAMAGE',
                             dead='LINK_DEAD',dead_slam='LINK_DEAD_SLAM',smash=['LINK_SMASH1','LINK_SMASH2','LINK_SMASH3'],
                             down_bounce='LINK_DOWN_BOUNCE'),
@@ -91,6 +94,20 @@ FIGHTERS={
                 special=['Attack13','Attack100Start','Attack100Loop','Attack100End','SpecialHi','SpecialHiEnd',
                          'SpecialAirHi','SpecialN','SpecialNGet','SpecialNEmpty','SpecialAirN','SpecialLw','SpecialAirLw'],
                 parts={}),
+    # 328_KirbyModel.c: dKirbyModel_JointTree @0x1448, anim table gap_0x1920
+    # (229_KirbyMain.c commonparts); itemlight 17, itemheavy 30 (tree 13/26).
+    'kirby':dict(Name='Kirby',size=0.91,spawn=13,grab=26,kind='FIGHTER_KIRBY',attr='fighter_attr_kirby',
+                 sounds=dict(jump='KIRBY_JUMP',jump_air='KIRBY_JUMP_AIR',land='KIRBY_LAND',damage='KIRBY_DAMAGE',
+                             dead='KIRBY_DEAD',dead_slam='KIRBY_DEAD_SLAM',smash=['KIRBY_SMASH1','KIRBY_SMASH2','KIRBY_SMASH3'],
+                             down_bounce='KIRBY_DOWN_BOUNCE'),
+                 model=328,main='229_KirbyMain.c',motion='228_KirbyMainMotion.c',base_parts={},itemlight=17,tree=0x1448,matanim=0x1920,
+                 table='dFTKirbyMotionDescs',
+                 special=['Attack100Start','Attack100Loop','Attack100End','JumpAerialF1','JumpAerialF2','JumpAerialF3',
+                          'JumpAerialF4','JumpAerialF5','SpecialHi','SpecialHiLanding','SpecialAirHi','SpecialAirHiFall',
+                          'SpecialLwStart','SpecialLwHold','SpecialLwEnd','SpecialAirLwStart','SpecialAirLwHold','SpecialAirLwFall',
+                          'SpecialAirLwLanding','SpecialNStart','SpecialNLoop','SpecialNEnd','SpecialNEat','SpecialNThrow','SpecialNWait',
+                          'SpecialAirNStart','SpecialAirNLoop','SpecialAirNEnd'],
+                 parts={}),
 }
 
 def rom_file(rom,fid,decoder,scratch):
@@ -260,7 +277,7 @@ def script_events(tables,symbol,limit,ops):
     if symbol in tables:run(symbol)
     return events
 
-def export_actions(clips,float_frames,parents,motions,tables):
+def export_actions(clips,float_frames,parents,motions,tables,size):
     """FighterAction table (src/fighter.h order): clip, length, intangible
     window (SetHitStatusAll 3..1), facing flip (SetFlag1), tick-0 sounds and,
     for movement-TransN clips, the per-tick displacement the game applies."""
@@ -280,14 +297,14 @@ def export_actions(clips,float_frames,parents,motions,tables):
         intangible=(min(on[0],ticks),min(off[0] if off else ticks,ticks)) if on else (0,0)
         ref='NULL'
         if root==2 and not action.startswith('DOWN_WAIT'):
-            z=[round(float(values[t][len(parents)][2])) for t in range(len(values))]
+            z=[round(float(values[t][len(parents)][2])*size) for t in range(len(values))]
             dx=[z[t]-(z[t-1] if t else 0) for t in range(len(z))]
             lines.append(f'static const int16_t dx_{action.lower()}[{len(dx)}]={{'+','.join(map(str,dx))+'};');ref=f'dx_{action.lower()}'
         if action=='GUARD':
             # Shield centre: the hip (model joint 0, child of YRotN) at the end
             # of GuardOn; YRotN's own runtime pose is not in the animation file.
             hip=world(values[len(values)-1],parents,_float_matrix)[0]
-            shield=(round(float(hip[2,3])),round(float(hip[1,3])))
+            shield=(round(float(hip[2,3])*size),round(float(hip[1,3])*size))
         rows.append(f'{{{position[motion]},{ticks},{intangible[0]},{intangible[1]},{turn},{{{sounds[0]},{sounds[1]}}},{ref}}}, /* {action} */')
     lines.append('static const FighterAction actions[ACTION_COUNT]={');lines+=rows;lines.append('};')
     return lines,shield
@@ -326,7 +343,7 @@ def export_moves(name,cfg,clips,float_frames,parents,motions,tables):
     layout as the legacy mario_moves.c."""
     position={c['motion']:i for i,c in enumerate(clips)}
     unique={c['index']:c for c in clips if 'same' not in c}
-    hits=[];allframes=[];descs=[];identity=[0,0,0,0,0,0,1,1,1]
+    hits=[];allframes=[];descs=[];identity=[0,0,0,0,0,0,1,1,1];size=cfg['size']
     for slot,_,_ in SPECS:
         motion=next(m for m in SLOT_MOTIONS[slot] if motions.get(m,{}).get('file'))
         entry=clips[position[motion]];index=entry.get('index',entry.get('same'));src=unique[index]
@@ -343,11 +360,11 @@ def export_moves(name,cfg,clips,float_frames,parents,motions,tables):
                 if joint>=4:pt=w[joint-4]@pt
                 elif joint!=0:raise ValueError('Unsupported attack joint')
                 angle=v[10];a=math.radians(angle if angle!=361 else 0)
-                hits.append([round(pt[2]),round(pt[1]),round(v[6]*.5),v[3],angle,v[11],v[12],v[17],hit['strike'],v[13],
+                hits.append([round(pt[2]*size),round(pt[1]*size),round(v[6]*.5),v[3],angle,v[11],v[12],v[17],hit['strike'],v[13],
                              round(math.cos(a)*4096),round(math.sin(a)*4096),fs.hit_sound(v[16],v[15])])
             spawn=w[cfg['spawn']]@np.array([0,0,0,1.0]);anchor=w[cfg['grab']]@np.array([0,0,0,1.0])
-            allframes.append([start,len(hits)-start,frame['flags'],round(spawn[2]),round(spawn[1]),
-                              round(anchor[2]),round(anchor[1]),'{%d,%d}'%tuple(frame['sounds'])])
+            allframes.append([start,len(hits)-start,frame['flags'],round(spawn[2]*size),round(spawn[1]*size),
+                              round(anchor[2]*size),round(anchor[1]*size),'{%d,%d}'%tuple(frame['sounds'])])
         descs.append(f'{{"{slot}",{position[motion]},{ticks},{first}}}')
     damage=['DamageHi1','DamageHi2','DamageHi3','DamageN1','DamageN2','DamageN3','DamageLw1','DamageLw2','DamageLw3',
             'DamageAir1','DamageAir2','DamageAir3','DamageFlyHi','DamageFlyN','DamageFlyLw','DamageFlyTop','DamageFlyRoll']
@@ -363,7 +380,7 @@ def export_moves(name,cfg,clips,float_frames,parents,motions,tables):
     lines+=['static const MoveFrame move_frames[]={']+['{'+','.join(map(str,f))+'},' for f in allframes]+['};']
     lines+=['static const MoveDesc move_descs[MOVE_COUNT]={'+','.join(descs)+'};']
     lines+=['static const unsigned damage_ticks[17]={'+','.join(str(tick_of(m)) for m in damage)+'};']
-    actions,shield=export_actions(clips,float_frames,parents,motions,tables);lines+=actions
+    actions,shield=export_actions(clips,float_frames,parents,motions,tables,cfg['size']);lines+=actions
     lines+=[f'const Fighter fighter_{name}={{"{cfg["Name"]}",{cfg["kind"]},&{cfg["attr"]},move_hits,move_frames,move_descs,damage_ticks,',
             '    {'+','.join(map(str,clipmap))+',{'+','.join(str(clip(m)) for m in damage)+'}},',
             '    {'+','.join(map(str,sounds))+','+smash+','+str(SOUND[snd['down_bounce']])+'},',
@@ -502,7 +519,7 @@ def convert(name,check_mario=False):
     lines.append('static const FighterJoint joints[]={'+','.join('{%d,%d,%d,0}'%p for p in plan)+'};')
     lines.append('static const int8_t parents[]={'+','.join(map(str,parents))+'};')
     lines.append('static const uint8_t triangle_parts[]={'+','.join(map(str,tags))+'};')
-    scale=round(divisor/WORLD_UNIT*4096)
+    scale=round(divisor/WORLD_UNIT*4096*cfg['size'])
     lines.append(f'const FighterModel {name}_model={{"{Name}",vertices,{len(tri_vertices)},triangle_textures,'
                  f'textures,{len(model.textures)},local_map,locals,clips,{len(clips)},joints,parents,{len(depths)},'
                  f'{len(slots)},{scale},{{0,0,0}},triangle_parts,{base_mask}u,{512//divisor}}};')

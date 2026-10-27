@@ -1,4 +1,5 @@
 #include <nds.h>
+#include <stdlib.h>
 #include "fighter_render.h"
 #include "skeleton_sample.h"
 
@@ -12,17 +13,109 @@ static int texture_size(unsigned size)
     return result;
 }
 
-int fighter_render_init(FighterRender *r,const FighterModel *m)
+static unsigned tinted(unsigned color,unsigned tint)
 {
-    if(m->texture_count>FIGHTER_MAX_TEXTURES || (m->joint_count+1)*SKELETON_CHANNELS>MAX_ROW || m->slot_count>30)return 0;
-    r->model=m;
+    if(tint==0x7fff)return color;
+    return RGB15((color&31)*(tint&31)/31,((color>>5)&31)*((tint>>5)&31)/31,((color>>10)&31)*((tint>>10)&31)/31);
+}
+
+/* Packed GX command list writer (GBATEK "DS 3D Geometry Commands"): four
+ * command ids per header word, then their parameters. With out==NULL it only
+ * counts words, so each list is sized exactly before its single allocation. */
+#define FIFO_MTX_RESTORE REG2ID(MATRIX_RESTORE)
+typedef struct {uint32_t *out;unsigned words,n,np;uint8_t ids[4];uint32_t params[8];} Packer;
+static void pack_flush(Packer *p)
+{
+    if(!p->n)return;
+    while(p->n<4)p->ids[p->n++]=FIFO_NOP;
+    if(p->out) {
+        p->out[p->words]=FIFO_COMMAND_PACK(p->ids[0],p->ids[1],p->ids[2],p->ids[3]);
+        for(unsigned i=0;i<p->np;++i)p->out[p->words+1+i]=p->params[i];
+    }
+    p->words+=1+p->np;p->n=p->np=0;
+}
+static void pack(Packer *p,uint8_t id,uint32_t a,uint32_t b,unsigned count)
+{
+    p->ids[p->n++]=id;
+    if(count>0)p->params[p->np++]=a;
+    if(count>1)p->params[p->np++]=b;
+    if(p->n==4)pack_flush(p);
+}
+/* One part bucket (32 = triangles not tied to a model part), in model order:
+ * texture switches, matrix-slot restores and per-vertex colour/uv/position. */
+static unsigned bucket_list(const FighterRender *r,unsigned bucket,unsigned tint,uint32_t *out)
+{
+    const FighterModel *m=r->model;Packer p={out?out+1:NULL,0,0,0,{0},{0}};
+    int previous=-2,slot=-1;
+    for(unsigned i=0;i<m->vertex_count;i+=3) {
+        unsigned part=m->triangle_parts[i/3];
+        if((part==255?32u:part)!=bucket)continue;
+        int texture=m->triangle_textures[i/3];
+        if(texture!=previous) {
+            pack(&p,FIFO_TEX_FORMAT,texture<0?0:r->texture_params[texture],0,1);
+            pack(&p,FIFO_BEGIN,GL_TRIANGLE,0,1);previous=texture;
+        }
+        for(unsigned j=0;j<3;++j) {
+            const FighterVertex *v=&m->vertices[i+j];
+            const FighterLocalVertex *q=&m->locals[m->local_map[i+j]];
+            if(q->slot!=slot) {slot=q->slot;pack(&p,FIFO_MTX_RESTORE,(uint32_t)slot,0,1);}
+            pack(&p,FIFO_COLOR,tinted(v->color,tint),0,1);
+            pack(&p,FIFO_TEX_COORD,(uint16_t)v->u|(uint32_t)(uint16_t)v->v<<16,0,1);
+            pack(&p,FIFO_VERTEX16,(uint16_t)q->x|(uint32_t)(uint16_t)q->y<<16,(uint16_t)q->z,2);
+        }
+    }
+    pack_flush(&p);
+    if(out)out[0]=p.words;
+    return p.words;
+}
+
+int fighter_render_load(FighterRender *r,const FighterModel *m,const unsigned *tints,unsigned tint_count)
+{
+    if(m->texture_count>FIGHTER_MAX_TEXTURES || (m->joint_count+1)*SKELETON_CHANNELS>MAX_ROW || m->slot_count>30 ||
+       tint_count>FIGHTER_LIST_TINTS)return 0;
+    r->model=m;r->loaded=0;
     if(m->texture_count && !glGenTextures(m->texture_count,r->textures))return 0;
+    r->loaded=1;
     for(unsigned i=0;i<m->texture_count;++i) {
         const FighterTexture *t=&m->textures[i];
         glBindTexture(0,r->textures[i]);
-        if(!glTexImage2D(0,0,GL_RGBA,texture_size(t->width),texture_size(t->height),0,t->param,t->pixels))return 0;
+        if(!glTexImage2D(0,0,GL_RGBA,texture_size(t->width),texture_size(t->height),0,t->param,t->pixels)) {
+            fighter_render_unload(r);return 0;
+        }
+        r->texture_params[i]=glGetTexParameter();
     }
+    /* Prebuilt lists: per tint, one per model part. Only the joint matrices
+     * change per frame, so a draw is a few DMA transfers to the GX FIFO. */
+    for(unsigned k=0;k<tint_count;++k) {
+        r->tints[k]=tints[k];
+        for(unsigned b=0;b<FIGHTER_BUCKETS;++b) {
+            unsigned words=bucket_list(r,b,tints[k],NULL);
+            if(!words) {r->lists[k][b]=NULL;continue;}
+            uint32_t *list=malloc((words+1)*4);
+            if(!list) {fighter_render_unload(r);return 0;}
+            bucket_list(r,b,tints[k],list);DC_FlushRange(list,(words+1)*4);r->lists[k][b]=list;
+        }
+    }
+    r->tint_count=tint_count;
     return 1;
+}
+
+void fighter_render_unload(FighterRender *r)
+{
+    for(unsigned k=0;k<FIGHTER_LIST_TINTS;++k)for(unsigned b=0;b<FIGHTER_BUCKETS;++b) {
+        free(r->lists[k][b]);r->lists[k][b]=NULL;
+    }
+    if(r->loaded && r->model && r->model->texture_count)glDeleteTextures(r->model->texture_count,r->textures);
+    r->loaded=0;r->tint_count=0;
+}
+
+/* glCallList without its per-call cache flush (lists are flushed once when
+ * built): DMA the packed words into the geometry FIFO. */
+static void call_list(const uint32_t *list)
+{
+    while((DMA_CR(0)&DMA_BUSY)||(DMA_CR(1)&DMA_BUSY)||(DMA_CR(2)&DMA_BUSY)||(DMA_CR(3)&DMA_BUSY));
+    DMA_SRC(0)=(u32)(list+1);DMA_DEST(0)=0x4000400;DMA_CR(0)=DMA_FIFO|list[0];
+    while(DMA_CR(0)&DMA_BUSY);
 }
 
 static void decode(const FighterModel *m,unsigned clip,unsigned age,int16_t *out)
@@ -70,8 +163,16 @@ void fighter_render_draw(const FighterRender *r,unsigned clip,unsigned age,unsig
         joint_matrix(row+j*SKELETON_CHANNELS,m->translate);
         if(k->store>=0)glStoreMatrix(k->store);
     }
-    int previous=-2,slot=-1;
     glPolyFmt(POLY_ALPHA(31)|POLY_CULL_NONE);
+    for(unsigned k=0;k<r->tint_count;++k)if(r->tints[k]==tint) {
+        for(unsigned b=0;b<FIGHTER_BUCKETS;++b)if(r->lists[k][b] && (b==32 || (mask>>b&1)))call_list(r->lists[k][b]);
+        /* The lists set TEXIMAGE_PARAM behind libnds's back: leave hardware and
+         * libnds agreeing on one bound texture so later glBindTexture calls apply. */
+        if(m->texture_count) {glBindTexture(0,r->textures[0]);GFX_TEX_FORMAT=r->texture_params[0];}
+        return;
+    }
+    /* Uncached tint: immediate submission (same commands, CPU writes). */
+    int previous=-2,slot=-1;
     for(unsigned i=0;i<m->vertex_count;i+=3) {
         unsigned part=m->triangle_parts[i/3];
         if(part!=255 && !(mask>>part&1))continue;
@@ -85,13 +186,7 @@ void fighter_render_draw(const FighterRender *r,unsigned clip,unsigned age,unsig
         for(unsigned j=0;j<3;++j) {
             const FighterVertex *v=&m->vertices[i+j];
             const FighterLocalVertex *p=&m->locals[m->local_map[i+j]];
-            unsigned color=v->color;
-            if(tint!=0x7fff) {
-                unsigned red=(color&31)*(tint&31)/31,green=((color>>5)&31)*((tint>>5)&31)/31;
-                unsigned blue=((color>>10)&31)*((tint>>10)&31)/31;
-                color=RGB15(red,green,blue);
-            }
-            glColor(color);glTexCoord2t16(v->u,v->v);
+            glColor(tinted(v->color,tint));glTexCoord2t16(v->u,v->v);
             /* Rigid skinning: each vertex is submitted under its joint's matrix. */
             if(p->slot!=slot) {slot=p->slot;glRestoreMatrix(slot);}
             glVertex3v16(p->x,p->y,p->z);
@@ -121,9 +216,7 @@ void fighter_render_draw_part(const FighterRender *r,unsigned part,unsigned tint
         }
         for(unsigned j=0;j<3;++j) {
             const FighterVertex *v=&m->vertices[i+j];const FighterLocalVertex *p=&m->locals[m->local_map[i+j]];
-            unsigned color=v->color;
-            if(tint!=0x7fff)color=RGB15((color&31)*(tint&31)/31,((color>>5)&31)*((tint>>5)&31)/31,((color>>10)&31)*((tint>>10)&31)/31);
-            glColor(color);glTexCoord2t16(v->u,v->v);glVertex3v16(p->x,p->y,p->z);
+            glColor(tinted(v->color,tint));glTexCoord2t16(v->u,v->v);glVertex3v16(p->x,p->y,p->z);
         }
     }
     if(previous!=-2)glEnd();
